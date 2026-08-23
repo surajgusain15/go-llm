@@ -1,4 +1,4 @@
-package tools
+package service
 
 import (
 	"context"
@@ -7,11 +7,12 @@ import (
 	"go-llm/internal/llm"
 )
 
-type Tool interface {
-	Schema() llm.ToolDefinition
+type ToolExecutor interface {
+	Schemas() []llm.ToolDefinition
 
 	Execute(
 		ctx context.Context,
+		name string,
 		input json.RawMessage,
 	) (*llm.ToolResult, error)
 }

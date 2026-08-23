@@ -112,7 +112,7 @@ func (e *Executor) Execute(
 	ctx context.Context,
 	name string,
 	input json.RawMessage,
-) (any, error) {
+) (*llm.ToolResult, error) {
 
 	tool, err := e.registry.Get(name)
 	if err != nil {

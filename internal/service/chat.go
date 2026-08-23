@@ -6,7 +6,6 @@ import (
 
 	"go-llm/internal/conversation"
 	"go-llm/internal/llm"
-	"go-llm/internal/tools"
 )
 
 const DefaultSystemPrompt = `
@@ -17,12 +16,12 @@ const maxToolIterations = 10
 
 type ChatService struct {
 	client   llm.Client
-	executor *tools.Executor
+	executor ToolExecutor
 }
 
 func NewChatService(
 	client llm.Client,
-	executor *tools.Executor,
+	executor ToolExecutor,
 ) *ChatService {
 
 	return &ChatService{

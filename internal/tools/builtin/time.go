@@ -32,7 +32,9 @@ func (t *TimeTool) Schema() llm.ToolDefinition {
 func (t *TimeTool) Execute(
 	ctx context.Context,
 	input json.RawMessage,
-) (any, error) {
+) (*llm.ToolResult, error) {
 
-	return time.Now().Format(time.RFC3339), nil
+	return &llm.ToolResult{
+		Content: time.Now().Format(time.RFC3339),
+	}, nil
 }

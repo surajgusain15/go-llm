@@ -23,3 +23,11 @@ type ToolProperty struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`
 }
+
+type ToolResult struct {
+	// Human/LLM readable content.
+	Content any `json:"content"`
+
+	// Optional metadata.
+	Metadata map[string]any `json:"metadata,omitempty"`
+}

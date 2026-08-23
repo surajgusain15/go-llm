@@ -33,7 +33,9 @@ func (u *UUIDTool) Schema() llm.ToolDefinition {
 func (u *UUIDTool) Execute(
 	ctx context.Context,
 	input json.RawMessage,
-) (any, error) {
+) (*llm.ToolResult, error) {
 
-	return uuid.NewString(), nil
+	return &llm.ToolResult{
+		Content: uuid.NewString(),
+	}, nil
 }

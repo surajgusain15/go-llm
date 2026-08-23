@@ -26,7 +26,7 @@ func (s *ChatService) executeToolCalls(
 			return err
 		}
 
-		content, err := toolResultToString(result)
+		content, err := toolResultToString(result.Content)
 		if err != nil {
 			return err
 		}

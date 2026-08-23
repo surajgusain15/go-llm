@@ -95,7 +95,7 @@ func (c *CalculatorTool) CollectInput(
 func (c *CalculatorTool) Execute(
 	ctx context.Context,
 	input json.RawMessage,
-) (any, error) {
+) (*llm.ToolResult, error) {
 
 	var req CalculatorInput
 
@@ -103,5 +103,7 @@ func (c *CalculatorTool) Execute(
 		return nil, err
 	}
 
-	return req.A + req.B, nil
+	return &llm.ToolResult{
+		Content: req.A + req.B,
+	}, nil
 }
