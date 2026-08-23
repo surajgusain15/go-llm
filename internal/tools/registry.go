@@ -1,23 +1,30 @@
 package tools
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Registry struct {
 	tools map[string]Tool
 }
 
 func NewRegistry() *Registry {
+
 	return &Registry{
 		tools: make(map[string]Tool),
 	}
 }
 
-func (r *Registry) Register(tool Tool) {
+func (r *Registry) Register(
+	tool Tool,
+) {
 
-	r.tools[tool.Name()] = tool
+	r.tools[tool.Schema().Function.Name] = tool
 }
 
-func (r *Registry) Get(name string) (Tool, error) {
+func (r *Registry) Get(
+	name string,
+) (Tool, error) {
 
 	tool, ok := r.tools[name]
 	if !ok {

@@ -7,28 +7,11 @@ import (
 	"log"
 
 	"go-llm/internal/tools"
-	"go-llm/internal/tools/builtin"
 )
 
 func main() {
 
-	registry := tools.NewRegistry()
-
-	registry.Register(
-		builtin.NewTimeTool(),
-	)
-
-	registry.Register(
-		builtin.NewUUIDTool(),
-	)
-
-	registry.Register(
-		builtin.NewCalculatorTool(),
-	)
-
-	executor := tools.NewExecutor(
-		registry,
-	)
+	executor := tools.NewDefaultExecutor()
 
 	runCalculator(executor)
 

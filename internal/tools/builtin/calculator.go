@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"go-llm/internal/tools"
+	"go-llm/internal/llm"
 )
 
 type CalculatorInput struct {
@@ -22,12 +22,32 @@ func NewCalculatorTool() *CalculatorTool {
 	return &CalculatorTool{}
 }
 
-func (c *CalculatorTool) Name() string {
-	return "calculator"
-}
+func (c *CalculatorTool) Schema() llm.ToolDefinition {
 
-func (c *CalculatorTool) Description() string {
-	return "Adds two numbers."
+	return llm.ToolDefinition{
+		Type: llm.ToolTypeFunction,
+		Function: llm.ToolFunction{
+			Name:        "calculator",
+			Description: "Adds two numbers.",
+			Parameters: llm.ToolParameters{
+				Type: "object",
+				Required: []string{
+					"a",
+					"b",
+				},
+				Properties: map[string]llm.ToolProperty{
+					"a": {
+						Type:        "number",
+						Description: "First number",
+					},
+					"b": {
+						Type:        "number",
+						Description: "Second number",
+					},
+				},
+			},
+		},
+	}
 }
 
 func (c *CalculatorTool) CollectInput(
@@ -64,17 +84,12 @@ func (c *CalculatorTool) CollectInput(
 		return nil, err
 	}
 
-	req := CalculatorInput{
-		A: a,
-		B: b,
-	}
-
-	data, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
+	return json.Marshal(
+		CalculatorInput{
+			A: a,
+			B: b,
+		},
+	)
 }
 
 func (c *CalculatorTool) Execute(
@@ -90,6 +105,3 @@ func (c *CalculatorTool) Execute(
 
 	return req.A + req.B, nil
 }
-
-var _ tools.Tool = (*CalculatorTool)(nil)
-var _ tools.InteractiveTool = (*CalculatorTool)(nil)

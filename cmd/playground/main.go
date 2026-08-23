@@ -9,26 +9,11 @@ import (
 	"strings"
 
 	"go-llm/internal/tools"
-	"go-llm/internal/tools/builtin"
 )
 
 func main() {
 
-	registry := tools.NewRegistry()
-
-	registry.Register(
-		builtin.NewCalculatorTool(),
-	)
-
-	registry.Register(
-		builtin.NewTimeTool(),
-	)
-
-	registry.Register(
-		builtin.NewUUIDTool(),
-	)
-
-	executor := tools.NewExecutor(registry)
+	executor := tools.NewDefaultExecutor()
 
 	reader := bufio.NewReader(os.Stdin)
 

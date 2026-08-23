@@ -4,15 +4,14 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"go-llm/internal/config"
-	"go-llm/internal/conversation"
 	"go-llm/internal/llm"
-	"go-llm/internal/prompts"
 	"go-llm/internal/service"
 	"go-llm/internal/tools"
 )
@@ -25,7 +24,7 @@ func main() {
 		Timeout: 2 * time.Minute,
 	}
 
-	llmClient := llm.NewOllamaClient(
+	client := llm.NewOllamaClient(
 		httpClient,
 		cfg.OllamaBaseURL,
 		cfg.Model,
@@ -33,19 +32,19 @@ func main() {
 
 	executor := tools.NewDefaultExecutor()
 
-	fmt.Println("LLM Chat")
-	fmt.Println("Type 'exit' to quit")
+	chatService := service.NewChatService(client, executor)
 
-	chatService := service.NewChatService(
-		llmClient,
-		executor,
-	)
-	conv := conversation.NewWithSystemPrompt(prompts.GolangExpert)
+	conv := chatService.NewConversation()
+
 	scanner := bufio.NewScanner(os.Stdin)
+
+	fmt.Println("=== Tool Calling Demo ===")
+	fmt.Println("Type 'exit' to quit.")
+	fmt.Println()
 
 	for {
 
-		fmt.Print("\nYou: ")
+		fmt.Print("You: ")
 
 		if !scanner.Scan() {
 			break
@@ -61,26 +60,21 @@ func main() {
 			break
 		}
 
-		fmt.Print("\nAssistant: ")
-
-		stream := chatService.Stream(
+		reply, err := chatService.Chat(
 			context.Background(),
 			conv,
 			input,
 		)
-
-		for result := range stream {
-
-			if result.Err != nil {
-				fmt.Printf("\nError: %v\n", result.Err)
-				break
-			}
-
-			fmt.Print(result.Chunk.Message.Content)
-
-			if result.Chunk.Done {
-				fmt.Println()
-			}
+		if err != nil {
+			log.Println(err)
+			continue
 		}
+
+		fmt.Println("Assistant:", reply)
+		fmt.Println()
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 }

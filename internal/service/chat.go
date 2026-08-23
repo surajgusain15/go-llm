@@ -6,15 +6,28 @@ import (
 
 	"go-llm/internal/conversation"
 	"go-llm/internal/llm"
+	"go-llm/internal/tools"
 )
 
+const DefaultSystemPrompt = `
+You are a helpful AI assistant.
+`
+
+const maxToolIterations = 10
+
 type ChatService struct {
-	client llm.Client
+	client   llm.Client
+	executor *tools.Executor
 }
 
-func NewChatService(client llm.Client) *ChatService {
+func NewChatService(
+	client llm.Client,
+	executor *tools.Executor,
+) *ChatService {
+
 	return &ChatService{
-		client: client,
+		client:   client,
+		executor: executor,
 	}
 }
 
@@ -24,25 +37,12 @@ func (s *ChatService) Chat(
 	message string,
 ) (string, error) {
 
-	// Add the user's message to the conversation history.
 	conv.AddUserMessage(message)
 
-	// Send the entire conversation to the LLM.
-	resp, err := s.client.Chat(
-		ctx, llm.ChatRequest{
-			Messages: conv.Messages(),
-			Stream:   false,
-		},
+	return s.executeAgentLoop(
+		ctx,
+		conv,
 	)
-	if err != nil {
-		return "", err
-	}
-
-	// Save the assistant's response in the conversation.
-	conv.AddAssistantMessage(resp.Message.Content)
-
-	// Return the response to the caller.
-	return resp.Message.Content, nil
 }
 
 func (s *ChatService) Stream(
@@ -94,4 +94,11 @@ func (s *ChatService) Stream(
 	}()
 
 	return stream
+}
+
+func (s *ChatService) NewConversation() *conversation.Conversation {
+
+	return conversation.NewWithSystemPrompt(
+		DefaultSystemPrompt,
+	)
 }

@@ -1,10 +1,11 @@
 package builtin
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"time"
+
+	"go-llm/internal/llm"
 )
 
 type TimeTool struct{}
@@ -13,18 +14,19 @@ func NewTimeTool() *TimeTool {
 	return &TimeTool{}
 }
 
-func (t *TimeTool) Name() string {
-	return "current_time"
-}
+func (t *TimeTool) Schema() llm.ToolDefinition {
 
-func (t *TimeTool) Description() string {
-	return "Returns the current local time."
-}
-
-func (t *TimeTool) ReadInput(
-	reader *bufio.Reader,
-) (json.RawMessage, error) {
-	return nil, nil
+	return llm.ToolDefinition{
+		Type: llm.ToolTypeFunction,
+		Function: llm.ToolFunction{
+			Name:        "current_time",
+			Description: "Returns the current local time.",
+			Parameters: llm.ToolParameters{
+				Type:       "object",
+				Properties: map[string]llm.ToolProperty{},
+			},
+		},
+	}
 }
 
 func (t *TimeTool) Execute(

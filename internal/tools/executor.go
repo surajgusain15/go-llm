@@ -4,7 +4,8 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
+
+	"go-llm/internal/llm"
 )
 
 type ToolInfo struct {
@@ -14,18 +15,40 @@ type ToolInfo struct {
 
 type Executor struct {
 	registry *Registry
+	schemas  []llm.ToolDefinition
+}
+
+func (e *Executor) loadSchemas() {
+
+	tools := e.registry.List()
+
+	e.schemas = make(
+		[]llm.ToolDefinition,
+		0,
+		len(tools),
+	)
+
+	for _, tool := range tools {
+		e.schemas = append(
+			e.schemas,
+			tool.Schema(),
+		)
+	}
 }
 
 func NewExecutor(
 	registry *Registry,
 ) *Executor {
 
-	return &Executor{
+	e := &Executor{
 		registry: registry,
 	}
+
+	e.loadSchemas()
+
+	return e
 }
 
-// List returns metadata for all registered tools.
 func (e *Executor) List() []ToolInfo {
 
 	tools := e.registry.List()
@@ -34,10 +57,12 @@ func (e *Executor) List() []ToolInfo {
 
 	for _, tool := range tools {
 
+		schema := tool.Schema()
+
 		result = append(
 			result, ToolInfo{
-				Name:        tool.Name(),
-				Description: tool.Description(),
+				Name:        schema.Function.Name,
+				Description: schema.Function.Description,
 			},
 		)
 	}
@@ -45,33 +70,44 @@ func (e *Executor) List() []ToolInfo {
 	return result
 }
 
-// CollectInput collects interactive input if the tool supports it.
+func (e *Executor) Schemas() []llm.ToolDefinition {
+
+	tools := e.registry.List()
+
+	schemas := make(
+		[]llm.ToolDefinition,
+		0,
+		len(tools),
+	)
+
+	for _, tool := range tools {
+		schemas = append(
+			schemas,
+			tool.Schema(),
+		)
+	}
+
+	return schemas
+}
+
 func (e *Executor) CollectInput(
 	name string,
 	reader *bufio.Reader,
 ) (json.RawMessage, error) {
-
-	fmt.Println("CollectInput called")
 
 	tool, err := e.registry.Get(name)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("Tool Type: %T\n", tool)
-
 	interactiveTool, ok := tool.(InteractiveTool)
-
-	fmt.Println("Interactive:", ok)
-
 	if !ok {
-		return nil, ErrToolNotInteractive
+		return nil, ErrNotInteractive
 	}
 
 	return interactiveTool.CollectInput(reader)
 }
 
-// Execute executes a tool.
 func (e *Executor) Execute(
 	ctx context.Context,
 	name string,

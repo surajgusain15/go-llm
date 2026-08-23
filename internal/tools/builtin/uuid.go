@@ -1,9 +1,10 @@
 package builtin
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
+
+	"go-llm/internal/llm"
 
 	"github.com/google/uuid"
 )
@@ -14,18 +15,19 @@ func NewUUIDTool() *UUIDTool {
 	return &UUIDTool{}
 }
 
-func (u *UUIDTool) Name() string {
-	return "uuid"
-}
+func (u *UUIDTool) Schema() llm.ToolDefinition {
 
-func (u *UUIDTool) Description() string {
-	return "Generates a UUID."
-}
-
-func (u *UUIDTool) ReadInput(
-	reader *bufio.Reader,
-) (json.RawMessage, error) {
-	return nil, nil
+	return llm.ToolDefinition{
+		Type: llm.ToolTypeFunction,
+		Function: llm.ToolFunction{
+			Name:        "uuid",
+			Description: "Generates a random UUID.",
+			Parameters: llm.ToolParameters{
+				Type:       "object",
+				Properties: map[string]llm.ToolProperty{},
+			},
+		},
+	}
 }
 
 func (u *UUIDTool) Execute(

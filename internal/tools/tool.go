@@ -3,12 +3,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+
+	"go-llm/internal/llm"
 )
 
 type Tool interface {
-	Name() string
-
-	Description() string
+	Schema() llm.ToolDefinition
 
 	Execute(
 		ctx context.Context,
