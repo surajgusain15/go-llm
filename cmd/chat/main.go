@@ -11,6 +11,7 @@ import (
 
 	"go-llm/internal/config"
 	"go-llm/internal/conversation"
+	"go-llm/internal/core"
 	"go-llm/internal/llm"
 	"go-llm/internal/prompts"
 	"go-llm/internal/service"
@@ -31,7 +32,8 @@ func main() {
 		cfg.Model,
 	)
 
-	executor := tools.NewDefaultExecutor()
+	rt := core.New()
+	executor := tools.NewDefaultExecutor(rt)
 
 	fmt.Println("LLM Chat")
 	fmt.Println("Type 'exit' to quit")
@@ -39,6 +41,7 @@ func main() {
 	chatService := service.NewChatService(
 		llmClient,
 		executor,
+		rt,
 	)
 	conv := conversation.NewWithSystemPrompt(prompts.GolangExpert)
 	scanner := bufio.NewScanner(os.Stdin)

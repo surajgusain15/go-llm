@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"time"
 
+	"go-llm/internal/core"
+	"go-llm/internal/events"
 	"go-llm/internal/llm"
 )
 
@@ -16,6 +19,7 @@ type ToolInfo struct {
 type Executor struct {
 	registry    *Registry
 	middlewares []Middleware
+	core        *core.Core
 }
 
 func (e *Executor) Use(
@@ -48,16 +52,18 @@ func (e *Executor) Use(
 
 func NewExecutor(
 	registry *Registry,
+	rt *core.Core,
 ) *Executor {
 
-	e := &Executor{
-		registry:    registry,
-		middlewares: make([]Middleware, 0),
+	if rt == nil {
+		rt = core.New()
 	}
 
-	// e.loadSchemas()
-
-	return e
+	return &Executor{
+		registry:    registry,
+		core:        rt,
+		middlewares: make([]Middleware, 0),
+	}
 }
 
 func (e *Executor) List() []ToolInfo {
@@ -125,6 +131,12 @@ func (e *Executor) Execute(
 	input json.RawMessage,
 ) (*llm.ToolResult, error) {
 
+	start := time.Now()
+
+	e.core.Observer.OnEvent(
+		events.NewToolStarted(name),
+	)
+
 	tool, err := e.registry.Get(name)
 	if err != nil {
 		return nil, err
@@ -140,6 +152,14 @@ func (e *Executor) Execute(
 			invocation.Input,
 		)
 	}
+
+	e.core.Observer.OnEvent(
+		events.NewToolFinished(
+			name,
+			time.Since(start),
+			err,
+		),
+	)
 
 	for i := len(e.middlewares) - 1; i >= 0; i-- {
 		handler = e.middlewares[i](handler)

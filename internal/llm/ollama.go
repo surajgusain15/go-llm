@@ -3,7 +3,6 @@ package llm
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 )
 
@@ -30,9 +29,9 @@ func (c *OllamaClient) Chat(
 		req.Model = c.model
 	}
 
-	requestJSON, _ := json.MarshalIndent(req, "", "  ")
-	fmt.Println("REQUEST")
-	fmt.Println(string(requestJSON))
+	// requestJSON, _ := json.MarshalIndent(req, "", "  ")
+	// fmt.Println("REQUEST")
+	// fmt.Println(string(requestJSON))
 
 	httpReq, err := c.newRequest(ctx, req)
 	if err != nil {
@@ -66,9 +65,9 @@ func (c *OllamaClient) Chat(
 		return ChatResponse{}, err
 	}
 
-	responseJSON, _ := json.MarshalIndent(response, "", "  ")
-	fmt.Println("RESPONSE")
-	fmt.Println(string(responseJSON))
+	// responseJSON, _ := json.MarshalIndent(response, "", "  ")
+	// fmt.Println("RESPONSE")
+	// fmt.Println(string(responseJSON))
 
 	return response, nil
 }

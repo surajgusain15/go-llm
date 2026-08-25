@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"go-llm/internal/conversation"
+	"go-llm/internal/core"
+	"go-llm/internal/events"
 	"go-llm/internal/llm"
 )
 
@@ -12,21 +14,26 @@ const DefaultSystemPrompt = `
 You are a helpful AI assistant.
 `
 
-const maxToolIterations = 10
-
 type ChatService struct {
 	client   llm.Client
 	executor ToolExecutor
+	core     *core.Core
 }
 
 func NewChatService(
 	client llm.Client,
 	executor ToolExecutor,
+	rt *core.Core,
 ) *ChatService {
+
+	if rt == nil {
+		rt = core.New()
+	}
 
 	return &ChatService{
 		client:   client,
 		executor: executor,
+		core:     rt,
 	}
 }
 
@@ -37,6 +44,12 @@ func (s *ChatService) Chat(
 ) (string, error) {
 
 	conv.AddUserMessage(message)
+
+	s.core.Observer.OnEvent(
+		events.NewUserMessage(
+			message,
+		),
+	)
 
 	return s.executeAgentLoop(
 		ctx,
@@ -57,6 +70,12 @@ func (s *ChatService) Stream(
 		defer close(stream)
 
 		conv.AddUserMessage(message)
+
+		s.core.Observer.OnEvent(
+			events.NewUserMessage(
+				message,
+			),
+		)
 
 		var builder strings.Builder
 
@@ -85,6 +104,12 @@ func (s *ChatService) Stream(
 
 				conv.AddAssistantMessage(
 					builder.String(),
+				)
+
+				s.core.Observer.OnEvent(
+					events.NewAssistantMessage(
+						builder.String(),
+					),
 				)
 
 				return

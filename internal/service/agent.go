@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go-llm/internal/conversation"
+	"go-llm/internal/events"
 	"go-llm/internal/llm"
 )
 
@@ -20,14 +22,28 @@ func (s *ChatService) executeAgentLoop(
 
 	for range maxAgentIterations {
 
-		resp, err := s.client.Chat(
-			ctx,
-			llm.ChatRequest{
-				Messages: conv.Messages(),
-				Tools:    s.executor.Schemas(),
-				Stream:   false,
-			},
+		req := llm.ChatRequest{
+			Messages: conv.Messages(),
+			Tools:    s.executor.Schemas(),
+			Stream:   false,
+		}
+
+		start := time.Now()
+
+		s.core.Observer.OnEvent(
+			events.NewLLMRequestStarted(
+				req.Model,
+			),
 		)
+
+		resp, err := s.client.Chat(ctx, req)
+
+		events.NewLLMRequestFinished(
+			req.Model,
+			time.Since(start),
+			err,
+		)
+
 		if err != nil {
 			return "", err
 		}

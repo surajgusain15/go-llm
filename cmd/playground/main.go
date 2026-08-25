@@ -8,12 +8,14 @@ import (
 	"os"
 	"strings"
 
+	"go-llm/internal/core"
 	"go-llm/internal/tools"
 )
 
 func main() {
 
-	executor := tools.NewDefaultExecutor()
+	rt := core.New()
+	executor := tools.NewDefaultExecutor(rt)
 
 	reader := bufio.NewReader(os.Stdin)
 

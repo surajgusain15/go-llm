@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"go-llm/internal/config"
+	"go-llm/internal/core"
+	"go-llm/internal/events"
 	"go-llm/internal/llm"
 	"go-llm/internal/service"
 	"go-llm/internal/tools"
@@ -30,9 +32,12 @@ func main() {
 		cfg.Model,
 	)
 
-	executor := tools.NewDefaultExecutor()
+	rt := core.New()
+	rt.Observer = events.NewCLIObserver()
 
-	chatService := service.NewChatService(client, executor)
+	executor := tools.NewDefaultExecutor(rt)
+
+	chatService := service.NewChatService(client, executor, rt)
 
 	conv := chatService.NewConversation()
 

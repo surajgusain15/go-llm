@@ -1,10 +1,11 @@
 package tools
 
 import (
+	"go-llm/internal/core"
 	"go-llm/internal/tools/builtin"
 )
 
-func NewDefaultExecutor() *Executor {
+func NewDefaultExecutor(rt *core.Core) *Executor {
 
 	registry := NewRegistry()
 
@@ -22,6 +23,7 @@ func NewDefaultExecutor() *Executor {
 
 	executor := NewExecutor(
 		registry,
+		rt,
 	)
 
 	executor.Use(Logging)

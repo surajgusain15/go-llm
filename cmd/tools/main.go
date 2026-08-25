@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"log"
 
+	"go-llm/internal/core"
 	"go-llm/internal/tools"
 )
 
 func main() {
 
-	executor := tools.NewDefaultExecutor()
+	rt := core.New()
+	executor := tools.NewDefaultExecutor(rt)
 
 	runCalculator(executor)
 
