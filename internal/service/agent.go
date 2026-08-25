@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go-llm/internal/conversation"
+	"go-llm/internal/events"
 )
 
 const maxAgentIterations = 10
@@ -15,7 +16,13 @@ func (s *ChatService) executeAgentLoop(
 	conv *conversation.Conversation,
 ) (string, error) {
 
-	for range maxAgentIterations {
+	for i := range maxAgentIterations {
+
+		s.core.Emit(
+			events.NewAgentIterationStarted(
+				i + 1,
+			),
+		)
 
 		req := s.buildChatRequest(
 			conv,
@@ -45,6 +52,11 @@ func (s *ChatService) executeAgentLoop(
 		)
 
 		if len(resp.Message.ToolCalls) == 0 {
+
+			s.core.Emit(
+				events.NewAgentFinished(),
+			)
+
 			return resp.Message.Content, nil
 		}
 

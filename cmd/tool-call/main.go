@@ -32,8 +32,7 @@ func main() {
 		cfg.Model,
 	)
 
-	rt := core.New()
-	rt.Observer = events.NewCLIObserver()
+	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
 
 	executor := tools.NewDefaultExecutor(rt)
 

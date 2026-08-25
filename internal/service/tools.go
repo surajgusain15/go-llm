@@ -15,22 +15,21 @@ func (s *ChatService) executeToolCalls(
 	calls []llm.ToolCall,
 ) error {
 
-	for _, call := range calls {
+	results, err := s.executeTools(
+		ctx,
+		calls,
+	)
+	if err != nil {
+		return err
+	}
 
-		result, err := s.executeToolCall(
-			ctx,
-			call,
-		)
-		if err != nil {
-			return err
-		}
+	for _, executed := range results {
 
-		err = s.appendToolResult(
+		if err := s.appendToolResult(
 			conv,
-			call,
-			result,
-		)
-		if err != nil {
+			executed.Call,
+			executed.Result,
+		); err != nil {
 			return err
 		}
 	}

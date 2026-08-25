@@ -3,18 +3,21 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 
 	"go-llm/internal/core"
+	"go-llm/internal/events"
 	"go-llm/internal/tools"
 )
 
 func main() {
 
-	rt := core.New()
+	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
+
 	executor := tools.NewDefaultExecutor(rt)
 
 	reader := bufio.NewReader(os.Stdin)
@@ -55,7 +58,7 @@ func main() {
 		)
 
 		if err != nil &&
-			err != tools.ErrToolNotInteractive {
+			!errors.Is(err, tools.ErrToolNotInteractive) {
 
 			fmt.Println(err)
 			continue

@@ -26,7 +26,7 @@ func NewChatService(
 ) *ChatService {
 
 	if rt == nil {
-		rt = core.New()
+		rt = core.New(events.NopObserver{})
 	}
 
 	return &ChatService{
@@ -44,7 +44,7 @@ func (s *ChatService) Chat(
 
 	conv.AddUserMessage(message)
 
-	s.core.Observer.OnEvent(
+	s.core.Emit(
 		events.NewUserMessage(
 			message,
 		),
@@ -64,8 +64,12 @@ func (s *ChatService) Stream(
 
 	conv.AddUserMessage(message)
 
-	s.core.Observer.OnEvent(
+	s.core.Emit(
 		events.NewUserMessage(message),
+	)
+
+	s.core.Emit(
+		events.NewAgentStarted(),
 	)
 
 	return s.executeStreamingAgentLoop(

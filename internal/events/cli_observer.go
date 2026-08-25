@@ -4,10 +4,27 @@ import (
 	"fmt"
 )
 
-type CLIObserver struct{}
+type LogLevel int
 
-func NewCLIObserver() *CLIObserver {
-	return &CLIObserver{}
+const (
+	LogLevelSilent LogLevel = iota
+	LogLevelNormal
+	LogLevelDebug
+)
+
+type CLIObserver struct {
+	Level LogLevel
+}
+
+func NewCLIObserver(level LogLevel) *CLIObserver {
+	return &CLIObserver{Level: level}
+}
+
+func (c *CLIObserver) enabled(
+	level LogLevel,
+) bool {
+
+	return c.Level >= level
 }
 
 func (c *CLIObserver) OnEvent(
@@ -16,67 +33,79 @@ func (c *CLIObserver) OnEvent(
 
 	switch e := event.(type) {
 
+	case AgentStarted:
+
+		if c.enabled(LogLevelNormal) {
+			fmt.Println("🤖 Thinking...")
+		}
+
+	case AgentIterationStarted:
+
+		if c.enabled(LogLevelDebug) {
+			fmt.Printf(
+				"🤖 Agent iteration %d\n",
+				e.Iteration,
+			)
+		}
+
 	case ToolStarted:
 
-		fmt.Printf(
-			"🔧 Tool started: %s\n",
-			e.Name,
-		)
+		if c.enabled(LogLevelNormal) {
+			fmt.Printf(
+				"🔧 Using %s...\n",
+				e.Name,
+			)
+		}
 
 	case ToolFinished:
 
-		if e.Err != nil {
+		if c.enabled(LogLevelDebug) {
 
-			fmt.Printf(
-				"❌ Tool failed: %s (%v)\n",
-				e.Name,
-				e.Err,
-			)
+			if e.Err != nil {
 
-			return
+				fmt.Printf(
+					"❌ %s failed (%v)\n",
+					e.Name,
+					e.Err,
+				)
+
+			} else {
+
+				fmt.Printf(
+					"✅ %s completed (%s)\n",
+					e.Name,
+					e.Duration,
+				)
+			}
 		}
-
-		fmt.Printf(
-			"✅ Tool finished: %s (%s)\n",
-			e.Name,
-			e.Duration,
-		)
 
 	case LLMRequestStarted:
 
-		fmt.Println(
-			"🧠 LLM request started...",
-		)
+		if c.enabled(LogLevelDebug) {
+			fmt.Println("🧠 LLM request started...")
+		}
 
 	case LLMRequestFinished:
 
-		if e.Err != nil {
+		if c.enabled(LogLevelDebug) {
 
-			fmt.Printf(
-				"❌ LLM request failed: %v\n",
-				e.Err,
-			)
+			if e.Err != nil {
 
-			return
+				fmt.Printf(
+					"❌ LLM request failed: %v\n",
+					e.Err,
+				)
+
+			} else {
+
+				fmt.Printf(
+					"✅ LLM request completed (%s)\n",
+					e.Duration,
+				)
+			}
 		}
 
-		fmt.Printf(
-			"✅ LLM request completed (%s)\n",
-			e.Duration,
-		)
-
-	case UserMessage:
-
-		fmt.Printf(
-			"\n👤 %s\n",
-			e.Content,
-		)
-
 	case AssistantMessage:
-
-		fmt.Printf(
-			"\n🤖 %s\n",
-			e.Content,
-		)
+		// Ignore for streaming CLI.
 	}
 }

@@ -26,7 +26,5 @@ func NewDefaultExecutor(rt *core.Core) *Executor {
 		rt,
 	)
 
-	executor.Use(Logging)
-
 	return executor
 }

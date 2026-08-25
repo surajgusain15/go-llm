@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"slices"
 	"time"
 
 	"go-llm/internal/core"
@@ -56,7 +57,7 @@ func NewExecutor(
 ) *Executor {
 
 	if rt == nil {
-		rt = core.New()
+		rt = core.New(events.NopObserver{})
 	}
 
 	return &Executor{
@@ -133,7 +134,7 @@ func (e *Executor) Execute(
 
 	start := time.Now()
 
-	e.core.Observer.OnEvent(
+	e.core.Emit(
 		events.NewToolStarted(name),
 	)
 
@@ -153,7 +154,7 @@ func (e *Executor) Execute(
 		)
 	}
 
-	e.core.Observer.OnEvent(
+	e.core.Emit(
 		events.NewToolFinished(
 			name,
 			time.Since(start),
@@ -161,8 +162,8 @@ func (e *Executor) Execute(
 		),
 	)
 
-	for i := len(e.middlewares) - 1; i >= 0; i-- {
-		handler = e.middlewares[i](handler)
+	for _, v := range slices.Backward(e.middlewares) {
+		handler = v(handler)
 	}
 
 	return handler(

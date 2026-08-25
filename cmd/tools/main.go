@@ -7,12 +7,14 @@ import (
 	"log"
 
 	"go-llm/internal/core"
+	"go-llm/internal/events"
 	"go-llm/internal/tools"
 )
 
 func main() {
 
-	rt := core.New()
+	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
+
 	executor := tools.NewDefaultExecutor(rt)
 
 	runCalculator(executor)

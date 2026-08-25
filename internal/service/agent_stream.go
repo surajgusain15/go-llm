@@ -23,7 +23,13 @@ func (s *ChatService) executeStreamingAgentLoop(
 
 		buffer := &conversation.AssistantBuffer{}
 
-		for range maxAgentIterations {
+		for i := 0; i < maxAgentIterations; i++ {
+
+			s.core.Emit(
+				events.NewAgentIterationStarted(
+					i + 1,
+				),
+			)
 
 			req := s.buildChatRequest(
 				conv,
@@ -39,40 +45,40 @@ func (s *ChatService) executeStreamingAgentLoop(
 				req,
 			)
 
-			restart := false
+			needsAnotherIteration := false
 
-			for result := range stream {
+			for chunk := range stream {
 
-				if result.Err != nil {
+				if chunk.Err != nil {
 
 					s.emitLLMRequestFinished(
 						start,
-						result.Err,
+						chunk.Err,
 					)
 
-					out <- result
+					out <- chunk
 					return
 				}
 
-				// Forward tokens to the caller.
-				out <- result
+				// Forward streamed tokens.
+				out <- chunk
 
-				// Buffer assistant text.
+				// Accumulate assistant text.
 				buffer.Write(
-					result.Chunk.Message.Content,
+					chunk.Chunk.Message.Content,
 				)
 
-				// Handle tool calls.
-				if len(result.Chunk.Message.ToolCalls) > 0 {
+				// Tool call.
+				if len(chunk.Chunk.Message.ToolCalls) > 0 {
 
-					toolCall := result.Chunk.Message.ToolCalls[0]
+					toolCall := chunk.Chunk.Message.ToolCalls[0]
 
-					// Preserve the assistant message containing the tool call.
+					// Preserve assistant message containing tool call.
 					conv.AddMessage(
-						result.Chunk.Message,
+						chunk.Chunk.Message,
 					)
 
-					result, err := s.executeToolCall(
+					toolResult, err := s.executeToolCall(
 						ctx,
 						toolCall,
 					)
@@ -86,15 +92,15 @@ func (s *ChatService) executeStreamingAgentLoop(
 						out <- llm.StreamResult{
 							Err: err,
 						}
+
 						return
 					}
 
-					err = s.appendToolResult(
+					if err := s.appendToolResult(
 						conv,
 						toolCall,
-						result,
-					)
-					if err != nil {
+						toolResult,
+					); err != nil {
 
 						s.emitLLMRequestFinished(
 							start,
@@ -104,6 +110,7 @@ func (s *ChatService) executeStreamingAgentLoop(
 						out <- llm.StreamResult{
 							Err: err,
 						}
+
 						return
 					}
 
@@ -112,17 +119,15 @@ func (s *ChatService) executeStreamingAgentLoop(
 						nil,
 					)
 
-					restart = true
+					buffer = &conversation.AssistantBuffer{}
+
+					needsAnotherIteration = true
+
 					break
 				}
 
 				// Final assistant response.
-				if result.Chunk.Done {
-
-					s.emitLLMRequestFinished(
-						start,
-						nil,
-					)
+				if chunk.Chunk.Done {
 
 					response := buffer.String()
 
@@ -130,21 +135,26 @@ func (s *ChatService) executeStreamingAgentLoop(
 						response,
 					)
 
-					s.core.Observer.OnEvent(
+					s.core.Emit(
 						events.NewAssistantMessage(
 							response,
 						),
+					)
+
+					s.emitLLMRequestFinished(
+						start,
+						nil,
+					)
+
+					s.core.Emit(
+						events.NewAgentFinished(),
 					)
 
 					return
 				}
 			}
 
-			if restart {
-
-				// Reset the assistant buffer before the next LLM call.
-				buffer = &conversation.AssistantBuffer{}
-
+			if needsAnotherIteration {
 				continue
 			}
 		}

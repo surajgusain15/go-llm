@@ -22,7 +22,7 @@ func (s *ChatService) buildChatRequest(
 
 func (s *ChatService) emitLLMRequestStarted() {
 
-	s.core.Observer.OnEvent(
+	s.core.Emit(
 		events.NewLLMRequestStarted(),
 	)
 }
@@ -32,7 +32,7 @@ func (s *ChatService) emitLLMRequestFinished(
 	err error,
 ) {
 
-	s.core.Observer.OnEvent(
+	s.core.Emit(
 		events.NewLLMRequestFinished(
 			time.Since(start),
 			err,

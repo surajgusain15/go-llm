@@ -12,6 +12,7 @@ import (
 	"go-llm/internal/config"
 	"go-llm/internal/conversation"
 	"go-llm/internal/core"
+	"go-llm/internal/events"
 	"go-llm/internal/llm"
 	"go-llm/internal/prompts"
 	"go-llm/internal/service"
@@ -32,7 +33,7 @@ func main() {
 		cfg.Model,
 	)
 
-	rt := core.New()
+	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
 	executor := tools.NewDefaultExecutor(rt)
 
 	fmt.Println("LLM Chat")
@@ -64,8 +65,6 @@ func main() {
 			break
 		}
 
-		fmt.Print("\nAssistant: ")
-
 		stream := chatService.Stream(
 			context.Background(),
 			conv,
@@ -79,7 +78,7 @@ func main() {
 				break
 			}
 
-			fmt.Print(
+			fmt.Println(
 				result.Chunk.Message.Content,
 			)
 		}
