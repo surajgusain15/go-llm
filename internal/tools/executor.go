@@ -14,37 +14,48 @@ type ToolInfo struct {
 }
 
 type Executor struct {
-	registry *Registry
-	schemas  []llm.ToolDefinition
+	registry    *Registry
+	middlewares []Middleware
 }
 
-func (e *Executor) loadSchemas() {
+func (e *Executor) Use(
+	middleware Middleware,
+) {
 
-	tools := e.registry.List()
-
-	e.schemas = make(
-		[]llm.ToolDefinition,
-		0,
-		len(tools),
+	e.middlewares = append(
+		e.middlewares,
+		middleware,
 	)
-
-	for _, tool := range tools {
-		e.schemas = append(
-			e.schemas,
-			tool.Schema(),
-		)
-	}
 }
+
+// func (e *Executor) loadSchemas() {
+//
+// 	tools := e.registry.List()
+//
+// 	e.schemas = make(
+// 		[]llm.ToolDefinition,
+// 		0,
+// 		len(tools),
+// 	)
+//
+// 	for _, tool := range tools {
+// 		e.schemas = append(
+// 			e.schemas,
+// 			tool.Schema(),
+// 		)
+// 	}
+// }
 
 func NewExecutor(
 	registry *Registry,
 ) *Executor {
 
 	e := &Executor{
-		registry: registry,
+		registry:    registry,
+		middlewares: make([]Middleware, 0),
 	}
 
-	e.loadSchemas()
+	// e.loadSchemas()
 
 	return e
 }
@@ -119,8 +130,26 @@ func (e *Executor) Execute(
 		return nil, err
 	}
 
-	return tool.Execute(
+	handler := func(
+		ctx context.Context,
+		invocation ToolInvocation,
+	) (*llm.ToolResult, error) {
+
+		return tool.Execute(
+			ctx,
+			invocation.Input,
+		)
+	}
+
+	for i := len(e.middlewares) - 1; i >= 0; i-- {
+		handler = e.middlewares[i](handler)
+	}
+
+	return handler(
 		ctx,
-		input,
+		ToolInvocation{
+			Name:  name,
+			Input: input,
+		},
 	)
 }

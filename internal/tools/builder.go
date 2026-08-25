@@ -1,6 +1,8 @@
 package tools
 
-import "go-llm/internal/tools/builtin"
+import (
+	"go-llm/internal/tools/builtin"
+)
 
 func NewDefaultExecutor() *Executor {
 
@@ -18,5 +20,11 @@ func NewDefaultExecutor() *Executor {
 		builtin.NewUUIDTool(),
 	)
 
-	return NewExecutor(registry)
+	executor := NewExecutor(
+		registry,
+	)
+
+	executor.Use(Logging)
+
+	return executor
 }
