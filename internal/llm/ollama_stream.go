@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 )
 
 func (c *OllamaClient) Stream(
@@ -16,45 +15,40 @@ func (c *OllamaClient) Stream(
 	stream := make(chan StreamResult)
 
 	go func() {
+
 		defer close(stream)
 
-		// Use the default model if none was provided.
-		if req.Model == "" {
-			req.Model = c.model
-		}
-
-		// Streaming must be enabled.
 		req.Stream = true
 
-		httpReq, err := c.newRequest(ctx, req)
+		httpReq, err := c.prepareRequest(
+			ctx,
+			req,
+		)
 		if err != nil {
-			stream <- StreamResult{Err: err}
-			return
-		}
-
-		httpResp, err := c.do(httpReq)
-		if err != nil {
-			stream <- StreamResult{Err: err}
-			return
-		}
-
-		// Validate response.
-		if httpResp.StatusCode != http.StatusOK {
-
-			responseBody, _ := io.ReadAll(httpResp.Body)
 
 			stream <- StreamResult{
-				Err: fmt.Errorf(
-					"ollama returned status %d: %s",
-					httpResp.StatusCode,
-					string(responseBody),
-				),
+				Err: err,
 			}
 
 			return
 		}
 
-		decoder := json.NewDecoder(httpResp.Body)
+		httpResp, err := c.doChatRequest(
+			httpReq,
+		)
+		if err != nil {
+
+			stream <- StreamResult{
+				Err: err,
+			}
+
+			return
+		}
+		defer httpResp.Body.Close()
+
+		decoder := json.NewDecoder(
+			httpResp.Body,
+		)
 
 		for {
 

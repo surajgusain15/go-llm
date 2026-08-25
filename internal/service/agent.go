@@ -3,12 +3,9 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"go-llm/internal/conversation"
-	"go-llm/internal/events"
-	"go-llm/internal/llm"
 )
 
 const maxAgentIterations = 10
@@ -18,29 +15,24 @@ func (s *ChatService) executeAgentLoop(
 	conv *conversation.Conversation,
 ) (string, error) {
 
-	fmt.Print("Schemas", s.executor.Schemas())
-
 	for range maxAgentIterations {
 
-		req := llm.ChatRequest{
-			Messages: conv.Messages(),
-			Tools:    s.executor.Schemas(),
-			Stream:   false,
-		}
+		req := s.buildChatRequest(
+			conv,
+			false,
+		)
 
 		start := time.Now()
 
-		s.core.Observer.OnEvent(
-			events.NewLLMRequestStarted(
-				req.Model,
-			),
+		s.emitLLMRequestStarted()
+
+		resp, err := s.client.Chat(
+			ctx,
+			req,
 		)
 
-		resp, err := s.client.Chat(ctx, req)
-
-		events.NewLLMRequestFinished(
-			req.Model,
-			time.Since(start),
+		s.emitLLMRequestFinished(
+			start,
 			err,
 		)
 
@@ -48,7 +40,9 @@ func (s *ChatService) executeAgentLoop(
 			return "", err
 		}
 
-		conv.AddMessage(resp.Message)
+		conv.AddMessage(
+			resp.Message,
+		)
 
 		if len(resp.Message.ToolCalls) == 0 {
 			return resp.Message.Content, nil

@@ -24,50 +24,31 @@ func (c *OllamaClient) Chat(
 	ctx context.Context,
 	req ChatRequest,
 ) (ChatResponse, error) {
-	// Use the default model if one wasn't provided.
-	if req.Model == "" {
-		req.Model = c.model
-	}
 
-	// requestJSON, _ := json.MarshalIndent(req, "", "  ")
-	// fmt.Println("REQUEST")
-	// fmt.Println(string(requestJSON))
-
-	httpReq, err := c.newRequest(ctx, req)
+	httpReq, err := c.prepareRequest(
+		ctx,
+		req,
+	)
 	if err != nil {
 		return ChatResponse{}, err
 	}
 
-	httpResp, err := c.do(httpReq)
+	httpResp, err := c.doChatRequest(
+		httpReq,
+	)
 	if err != nil {
 		return ChatResponse{}, err
 	}
 	defer httpResp.Body.Close()
 
-	if httpResp.StatusCode != http.StatusOK {
-
-		var apiErr struct {
-			Error string `json:"error"`
-		}
-
-		_ = json.NewDecoder(httpResp.Body).Decode(&apiErr)
-
-		return ChatResponse{}, &APIError{
-			StatusCode: httpResp.StatusCode,
-			Message:    apiErr.Error,
-		}
-	}
-
 	var response ChatResponse
 
-	err = json.NewDecoder(httpResp.Body).Decode(&response)
-	if err != nil {
+	if err := json.NewDecoder(
+		httpResp.Body,
+	).Decode(&response); err != nil {
+
 		return ChatResponse{}, err
 	}
-
-	// responseJSON, _ := json.MarshalIndent(response, "", "  ")
-	// fmt.Println("RESPONSE")
-	// fmt.Println(string(responseJSON))
 
 	return response, nil
 }

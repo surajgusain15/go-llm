@@ -7,9 +7,7 @@ type LLMRequestStarted struct {
 	BaseEvent
 }
 
-func NewLLMRequestStarted(
-	model string,
-) LLMRequestStarted {
+func NewLLMRequestStarted() LLMRequestStarted {
 
 	return LLMRequestStarted{
 		BaseEvent: NewBaseEvent(),
@@ -29,7 +27,6 @@ type LLMRequestFinished struct {
 }
 
 func NewLLMRequestFinished(
-	model string,
 	duration time.Duration,
 	err error,
 ) LLMRequestFinished {

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"strings"
 
 	"go-llm/internal/conversation"
 	"go-llm/internal/core"
@@ -63,61 +62,16 @@ func (s *ChatService) Stream(
 	message string,
 ) <-chan llm.StreamResult {
 
-	stream := make(chan llm.StreamResult)
+	conv.AddUserMessage(message)
 
-	go func() {
+	s.core.Observer.OnEvent(
+		events.NewUserMessage(message),
+	)
 
-		defer close(stream)
-
-		conv.AddUserMessage(message)
-
-		s.core.Observer.OnEvent(
-			events.NewUserMessage(
-				message,
-			),
-		)
-
-		var builder strings.Builder
-
-		clientStream := s.client.Stream(
-			ctx,
-			llm.ChatRequest{
-				Messages: conv.Messages(),
-				Stream:   true,
-			},
-		)
-
-		for result := range clientStream {
-
-			if result.Err != nil {
-				stream <- result
-				return
-			}
-
-			builder.WriteString(
-				result.Chunk.Message.Content,
-			)
-
-			stream <- result
-
-			if result.Chunk.Done {
-
-				conv.AddAssistantMessage(
-					builder.String(),
-				)
-
-				s.core.Observer.OnEvent(
-					events.NewAssistantMessage(
-						builder.String(),
-					),
-				)
-
-				return
-			}
-		}
-	}()
-
-	return stream
+	return s.executeStreamingAgentLoop(
+		ctx,
+		conv,
+	)
 }
 
 func (s *ChatService) NewConversation() *conversation.Conversation {
@@ -125,4 +79,9 @@ func (s *ChatService) NewConversation() *conversation.Conversation {
 	return conversation.NewWithSystemPrompt(
 		DefaultSystemPrompt,
 	)
+}
+
+type ResponseWriter interface {
+	Write(chunk llm.StreamChunk) error
+	Close() error
 }

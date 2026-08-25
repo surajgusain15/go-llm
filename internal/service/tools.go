@@ -17,24 +17,22 @@ func (s *ChatService) executeToolCalls(
 
 	for _, call := range calls {
 
-		result, err := s.executor.Execute(
+		result, err := s.executeToolCall(
 			ctx,
-			call.Function.Name,
-			call.Function.Arguments,
+			call,
 		)
 		if err != nil {
 			return err
 		}
 
-		content, err := toolResultToString(result.Content)
+		err = s.appendToolResult(
+			conv,
+			call,
+			result,
+		)
 		if err != nil {
 			return err
 		}
-
-		conv.AddToolMessage(
-			call.Function.Name,
-			content,
-		)
 	}
 
 	return nil
@@ -64,4 +62,25 @@ func toolResultToString(
 
 		return string(data), nil
 	}
+}
+
+func (s *ChatService) appendToolResult(
+	conv *conversation.Conversation,
+	call llm.ToolCall,
+	result *llm.ToolResult,
+) error {
+
+	content, err := toolResultToString(
+		result.Content,
+	)
+	if err != nil {
+		return err
+	}
+
+	conv.AddToolMessage(
+		call.Function.Name,
+		content,
+	)
+
+	return nil
 }

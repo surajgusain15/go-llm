@@ -75,15 +75,15 @@ func main() {
 		for result := range stream {
 
 			if result.Err != nil {
-				fmt.Printf("\nError: %v\n", result.Err)
+				fmt.Println(result.Err)
 				break
 			}
 
-			fmt.Print(result.Chunk.Message.Content)
-
-			if result.Chunk.Done {
-				fmt.Println()
-			}
+			fmt.Print(
+				result.Chunk.Message.Content,
+			)
 		}
+
+		fmt.Println()
 	}
 }

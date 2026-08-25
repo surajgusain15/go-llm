@@ -1,14 +1,37 @@
 package llm
 
-// StreamChunk represents a single piece of data received while
-// streaming a response from an LLM.
-type StreamChunk struct {
-	Message Message
-	Done    bool
+type StreamMessageType string
+
+const (
+	StreamMessageToken StreamMessageType = "token"
+
+	StreamMessageToolCall StreamMessageType = "tool_call"
+
+	StreamMessageCompleted StreamMessageType = "completed"
+
+	StreamMessageError StreamMessageType = "error"
+)
+
+type StreamMessage struct {
+	Type StreamMessageType
+
+	Token string
+
+	ToolCall *ToolCall
+
+	Err error
 }
 
-// StreamResult represents either a streamed chunk or an error.
+type StreamChunk struct {
+	Message Message
+
+	Done bool
+
+	DoneReason string
+}
+
 type StreamResult struct {
 	Chunk StreamChunk
-	Err   error
+
+	Err error
 }
