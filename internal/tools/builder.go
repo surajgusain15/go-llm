@@ -2,10 +2,11 @@ package tools
 
 import (
 	"go-llm/internal/core"
+	"go-llm/internal/database"
 	"go-llm/internal/tools/builtin"
 )
 
-func NewDefaultExecutor(rt *core.Core) *Executor {
+func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
 
 	registry := NewRegistry()
 
@@ -19,6 +20,14 @@ func NewDefaultExecutor(rt *core.Core) *Executor {
 
 	registry.Register(
 		builtin.NewUUIDTool(),
+	)
+
+	registry.Register(
+		builtin.NewDatabaseQueryTool(db),
+	)
+
+	registry.Register(
+		builtin.NewDatabaseSchemaTool(db),
 	)
 
 	executor := NewExecutor(

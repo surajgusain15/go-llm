@@ -23,34 +23,6 @@ type Executor struct {
 	core        *core.Core
 }
 
-func (e *Executor) Use(
-	middleware Middleware,
-) {
-
-	e.middlewares = append(
-		e.middlewares,
-		middleware,
-	)
-}
-
-// func (e *Executor) loadSchemas() {
-//
-// 	tools := e.registry.List()
-//
-// 	e.schemas = make(
-// 		[]llm.ToolDefinition,
-// 		0,
-// 		len(tools),
-// 	)
-//
-// 	for _, tool := range tools {
-// 		e.schemas = append(
-// 			e.schemas,
-// 			tool.Schema(),
-// 		)
-// 	}
-// }
-
 func NewExecutor(
 	registry *Registry,
 	rt *core.Core,
@@ -67,18 +39,32 @@ func NewExecutor(
 	}
 }
 
+func (e *Executor) Use(
+	middleware Middleware,
+) {
+	e.middlewares = append(
+		e.middlewares,
+		middleware,
+	)
+}
+
 func (e *Executor) List() []ToolInfo {
 
-	tools := e.registry.List()
+	tools := e.registry.Tools()
 
-	result := make([]ToolInfo, 0, len(tools))
+	result := make(
+		[]ToolInfo,
+		0,
+		len(tools),
+	)
 
 	for _, tool := range tools {
 
 		schema := tool.Schema()
 
 		result = append(
-			result, ToolInfo{
+			result,
+			ToolInfo{
 				Name:        schema.Function.Name,
 				Description: schema.Function.Description,
 			},
@@ -90,7 +76,7 @@ func (e *Executor) List() []ToolInfo {
 
 func (e *Executor) Schemas() []llm.ToolDefinition {
 
-	tools := e.registry.List()
+	tools := e.registry.Tools()
 
 	schemas := make(
 		[]llm.ToolDefinition,
@@ -113,9 +99,9 @@ func (e *Executor) CollectInput(
 	reader *bufio.Reader,
 ) (json.RawMessage, error) {
 
-	tool, err := e.registry.Get(name)
-	if err != nil {
-		return nil, err
+	tool, ok := e.registry.Get(name)
+	if !ok {
+		return nil, ErrToolNotFound
 	}
 
 	interactiveTool, ok := tool.(InteractiveTool)
@@ -138,8 +124,19 @@ func (e *Executor) Execute(
 		events.NewToolStarted(name),
 	)
 
-	tool, err := e.registry.Get(name)
-	if err != nil {
+	tool, ok := e.registry.Get(name)
+	if !ok {
+
+		err := ErrToolNotFound
+
+		e.core.Emit(
+			events.NewToolFinished(
+				name,
+				time.Since(start),
+				err,
+			),
+		)
+
 		return nil, err
 	}
 
@@ -154,6 +151,20 @@ func (e *Executor) Execute(
 		)
 	}
 
+	for _, middleware := range slices.Backward(
+		e.middlewares,
+	) {
+		handler = middleware(handler)
+	}
+
+	result, err := handler(
+		ctx,
+		ToolInvocation{
+			Name:  name,
+			Input: input,
+		},
+	)
+
 	e.core.Emit(
 		events.NewToolFinished(
 			name,
@@ -162,15 +173,5 @@ func (e *Executor) Execute(
 		),
 	)
 
-	for _, v := range slices.Backward(e.middlewares) {
-		handler = v(handler)
-	}
-
-	return handler(
-		ctx,
-		ToolInvocation{
-			Name:  name,
-			Input: input,
-		},
-	)
+	return result, err
 }

@@ -10,21 +10,19 @@ const (
 	LogLevelSilent LogLevel = iota
 	LogLevelNormal
 	LogLevelDebug
+	LogLevelInfo
 )
 
 type CLIObserver struct {
-	Level LogLevel
+	LogLevel LogLevel
 }
 
-func NewCLIObserver(level LogLevel) *CLIObserver {
-	return &CLIObserver{Level: level}
-}
-
-func (c *CLIObserver) enabled(
-	level LogLevel,
-) bool {
-
-	return c.Level >= level
+func NewCLIObserver(
+	logLevel LogLevel,
+) *CLIObserver {
+	return &CLIObserver{
+		LogLevel: logLevel,
+	}
 }
 
 func (c *CLIObserver) OnEvent(
@@ -33,79 +31,101 @@ func (c *CLIObserver) OnEvent(
 
 	switch e := event.(type) {
 
-	case AgentStarted:
+	case UserMessage:
 
-		if c.enabled(LogLevelNormal) {
-			fmt.Println("🤖 Thinking...")
+		if c.LogLevel < LogLevelInfo {
+			return
 		}
+
+		fmt.Printf(
+			"👤 %s\n",
+			e.Content,
+		)
+
+	case ThinkingStarted:
+
+		if c.LogLevel < LogLevelInfo {
+			return
+		}
+
+		fmt.Print(
+			"🤖 Thinking...",
+		)
 
 	case AgentIterationStarted:
 
-		if c.enabled(LogLevelDebug) {
-			fmt.Printf(
-				"🤖 Agent iteration %d\n",
-				e.Iteration,
-			)
+		if c.LogLevel < LogLevelDebug {
+			return
 		}
 
-	case ToolStarted:
-
-		if c.enabled(LogLevelNormal) {
-			fmt.Printf(
-				"🔧 Using %s...\n",
-				e.Name,
-			)
-		}
-
-	case ToolFinished:
-
-		if c.enabled(LogLevelDebug) {
-
-			if e.Err != nil {
-
-				fmt.Printf(
-					"❌ %s failed (%v)\n",
-					e.Name,
-					e.Err,
-				)
-
-			} else {
-
-				fmt.Printf(
-					"✅ %s completed (%s)\n",
-					e.Name,
-					e.Duration,
-				)
-			}
-		}
+		fmt.Printf(
+			"\n🤖 Agent iteration %d\n",
+			e.Iteration,
+		)
 
 	case LLMRequestStarted:
 
-		if c.enabled(LogLevelDebug) {
-			fmt.Println("🧠 LLM request started...")
+		if c.LogLevel < LogLevelDebug {
+			return
 		}
+
+		fmt.Print(
+			"🧠 LLM request started...\n",
+		)
+
+	case ToolStarted:
+
+		if c.LogLevel < LogLevelInfo {
+			return
+		}
+
+		fmt.Printf(
+			"🔧 Using %s...\n",
+			e.Name,
+		)
+
+	case ToolFinished:
+
+		if c.LogLevel < LogLevelInfo {
+			return
+		}
+
+		if e.Err != nil {
+
+			fmt.Printf(
+				"❌ %s failed (%v)\n",
+				e.Name,
+				e.Err,
+			)
+
+			return
+		}
+
+		fmt.Printf(
+			"✅ %s completed (%s)\n",
+			e.Name,
+			e.Duration,
+		)
 
 	case LLMRequestFinished:
 
-		if c.enabled(LogLevelDebug) {
-
-			if e.Err != nil {
-
-				fmt.Printf(
-					"❌ LLM request failed: %v\n",
-					e.Err,
-				)
-
-			} else {
-
-				fmt.Printf(
-					"✅ LLM request completed (%s)\n",
-					e.Duration,
-				)
-			}
+		if c.LogLevel < LogLevelDebug {
+			return
 		}
 
-	case AssistantMessage:
-		// Ignore for streaming CLI.
+		if e.Err != nil {
+
+			fmt.Printf(
+				"❌ LLM request failed: %v\n",
+				e.Err,
+			)
+
+			return
+		}
+
+		fmt.Printf(
+			"\n✅ LLM request completed (%s)\n",
+			e.Duration,
+		)
 	}
 }

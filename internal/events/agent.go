@@ -97,3 +97,25 @@ func (e AgentFinished) Timestamp() time.Time {
 func (e AgentFinished) Data() any {
 	return nil
 }
+
+type ThinkingStarted struct {
+	timestamp time.Time
+}
+
+func NewThinkingStarted() ThinkingStarted {
+	return ThinkingStarted{
+		timestamp: time.Now(),
+	}
+}
+
+func (e ThinkingStarted) Type() EventType {
+	return EventThinkingStarted
+}
+
+func (e ThinkingStarted) Timestamp() time.Time {
+	return e.timestamp
+}
+
+func (e ThinkingStarted) Data() any {
+	return nil
+}

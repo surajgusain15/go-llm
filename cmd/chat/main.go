@@ -12,6 +12,7 @@ import (
 	"go-llm/internal/config"
 	"go-llm/internal/conversation"
 	"go-llm/internal/core"
+	"go-llm/internal/database"
 	"go-llm/internal/events"
 	"go-llm/internal/llm"
 	"go-llm/internal/prompts"
@@ -33,8 +34,26 @@ func main() {
 		cfg.Model,
 	)
 
-	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
-	executor := tools.NewDefaultExecutor(rt)
+	db, err := database.NewMySQLClient(
+		cfg.MySQLDSN,
+		cfg.MySQLQueryTimeout,
+		cfg.MySQLMaxRows,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	defer db.Close()
+
+	if err := db.Ping(context.Background()); err != nil {
+		panic(err)
+	}
+
+	rt := core.New(events.NewCLIObserver(events.LogLevelInfo))
+	executor := tools.NewDefaultExecutor(
+		rt,
+		db,
+	)
 
 	fmt.Println("LLM Chat")
 	fmt.Println("Type 'exit' to quit")
@@ -44,7 +63,7 @@ func main() {
 		executor,
 		rt,
 	)
-	conv := conversation.NewWithSystemPrompt(prompts.GolangExpert)
+	conv := conversation.NewWithSystemPrompt(prompts.DatabaseAgentInstructions)
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for {
@@ -78,7 +97,7 @@ func main() {
 				break
 			}
 
-			fmt.Println(
+			fmt.Print(
 				result.Chunk.Message.Content,
 			)
 		}

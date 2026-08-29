@@ -17,8 +17,9 @@ const (
 	EventAgentIterationStarted EventType = "agent.iteration.started"
 	EventAgentToolsPlanned     EventType = "agent.tools.planned"
 
-	EventAgentStarted  EventType = "agent.started"
-	EventAgentFinished EventType = "agent.finished"
+	EventAgentStarted    EventType = "agent.started"
+	EventAgentFinished   EventType = "agent.finished"
+	EventThinkingStarted EventType = "thinking.started"
 )
 
 type Event interface {

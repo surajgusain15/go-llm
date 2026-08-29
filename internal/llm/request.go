@@ -27,6 +27,11 @@ func (c *OllamaClient) newRequest(
 		)
 	}
 
+	// fmt.Printf(
+	// 	"\nOLLAMA REQUEST:\n%s\n\n",
+	// 	body,
+	// )
+
 	httpReq, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,

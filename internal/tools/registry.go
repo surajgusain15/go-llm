@@ -1,49 +1,82 @@
 package tools
 
 import (
-	"fmt"
+	"go-llm/internal/llm"
 )
 
 type Registry struct {
 	tools map[string]Tool
+	order []string
 }
 
 func NewRegistry() *Registry {
-
 	return &Registry{
 		tools: make(map[string]Tool),
+		order: make([]string, 0),
 	}
 }
 
-func (r *Registry) Register(
-	tool Tool,
-) {
+func (r *Registry) Register(tool Tool) {
 
-	r.tools[tool.Schema().Function.Name] = tool
+	schema := tool.Schema()
+	name := schema.Function.Name
+
+	// Prevent duplicate registration.
+	if _, exists := r.tools[name]; exists {
+		return
+	}
+
+	r.tools[name] = tool
+	r.order = append(
+		r.order,
+		name,
+	)
 }
 
 func (r *Registry) Get(
 	name string,
-) (Tool, error) {
+) (Tool, bool) {
 
 	tool, ok := r.tools[name]
-	if !ok {
-		return nil, fmt.Errorf(
-			"tool %q not found",
-			name,
+
+	return tool, ok
+}
+
+func (r *Registry) Schemas() []llm.ToolDefinition {
+
+	schemas := make(
+		[]llm.ToolDefinition,
+		0,
+		len(r.order),
+	)
+
+	for _, name := range r.order {
+
+		tool := r.tools[name]
+
+		schemas = append(
+			schemas,
+			tool.Schema(),
 		)
 	}
 
-	return tool, nil
+	return schemas
 }
 
-func (r *Registry) List() []Tool {
+func (r *Registry) Tools() []Tool {
 
-	list := make([]Tool, 0, len(r.tools))
+	result := make(
+		[]Tool,
+		0,
+		len(r.order),
+	)
 
-	for _, tool := range r.tools {
-		list = append(list, tool)
+	for _, name := range r.order {
+		result = append(
+			result,
+			r.tools[name],
+		)
 	}
 
-	return list
+	return result
 }

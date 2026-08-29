@@ -6,7 +6,12 @@ import (
 	"errors"
 )
 
-var ErrNotInteractive = errors.New("tool is not interactive")
+var ErrNotInteractive = errors.New(
+	"tool is not interactive",
+)
+var ErrToolNotFound = errors.New(
+	"tool not found",
+)
 
 type InteractiveTool interface {
 	Tool
@@ -20,9 +25,9 @@ func (e *Executor) InteractiveTool(
 	name string,
 ) (InteractiveTool, error) {
 
-	tool, err := e.registry.Get(name)
-	if err != nil {
-		return nil, err
+	tool, ok := e.registry.Get(name)
+	if !ok {
+		return nil, ErrToolNotFound
 	}
 
 	interactiveTool, ok := tool.(InteractiveTool)
