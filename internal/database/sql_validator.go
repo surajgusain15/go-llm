@@ -38,15 +38,80 @@ func (v *SQLValidator) Validate(query string) error {
 		)
 	}
 
-	statementType := sqlparser.ASTToStatementType(
-		statements[0],
-	)
+	stmt := statements[0]
 
-	if statementType != sqlparser.StmtSelect {
+	if sqlparser.ASTToStatementType(stmt) != sqlparser.StmtSelect {
 		return fmt.Errorf(
 			"only SELECT queries are allowed",
 		)
 	}
 
+	switch stmt := stmt.(type) {
+
+	case *sqlparser.Select:
+		return validateSelect(stmt)
+
+	case *sqlparser.Union:
+		return validateUnion(stmt)
+
+	default:
+		return fmt.Errorf(
+			"unsupported SELECT statement type: %T",
+			stmt,
+		)
+	}
+}
+
+func validateSelect(
+	stmt *sqlparser.Select,
+) error {
+
+	if stmt.Lock != sqlparser.NoLock {
+		return fmt.Errorf(
+			"locking SELECT queries are not allowed",
+		)
+	}
+
 	return nil
+}
+
+func validateUnion(
+	stmt *sqlparser.Union,
+) error {
+
+	if stmt.GetLock() != sqlparser.NoLock {
+		return fmt.Errorf(
+			"locking SELECT queries are not allowed",
+		)
+	}
+
+	if err := validateTableStatement(stmt.Left); err != nil {
+		return err
+	}
+
+	if err := validateTableStatement(stmt.Right); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateTableStatement(
+	stmt sqlparser.TableStatement,
+) error {
+
+	switch stmt := stmt.(type) {
+
+	case *sqlparser.Select:
+		return validateSelect(stmt)
+
+	case *sqlparser.Union:
+		return validateUnion(stmt)
+
+	default:
+		return fmt.Errorf(
+			"unsupported UNION statement type: %T",
+			stmt,
+		)
+	}
 }

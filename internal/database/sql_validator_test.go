@@ -126,6 +126,11 @@ func TestSQLValidator(t *testing.T) {
 			query:     "SELECT FROM WHERE",
 			shouldErr: true,
 		},
+		{
+			name:      "locking select",
+			query:     "SELECT * FROM transactions FOR UPDATE",
+			shouldErr: true,
+		},
 	}
 
 	for _, tt := range tests {
