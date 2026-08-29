@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+const (
+	testQueryTimeout   = 10 * time.Second
+	testMaxRows        = 100
+	testMaxResultBytes = 1024 * 1024
+	testSchemaTTL      = 10 * time.Second
+)
+
 func TestMySQLClient(t *testing.T) {
 
 	dsn := os.Getenv("MYSQL_DSN")
@@ -15,7 +22,13 @@ func TestMySQLClient(t *testing.T) {
 		t.Skip("MYSQL_DSN not set")
 	}
 
-	client, err := NewMySQLClient(dsn)
+	client, err := NewMySQLClient(
+		dsn,
+		testQueryTimeout,
+		testMaxRows,
+		testMaxResultBytes,
+		testSchemaTTL,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,22 +3,38 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
+type schemaCache struct {
+	mu        sync.RWMutex
+	schema    *SchemaInfo
+	expiresAt time.Time
+}
+
 type MySQLClient struct {
-	db           *sql.DB
-	queryTimeout time.Duration
-	maxRows      int
+	db             *sql.DB
+	queryTimeout   time.Duration
+	maxRows        int
+	maxResultBytes int
+
+	validator *SQLValidator
+
+	schemaCache schemaCache
+	schemaTTL   time.Duration
 }
 
 func NewMySQLClient(
 	dsn string,
 	queryTimeout time.Duration,
 	maxRows int,
+	maxResultBytes int,
+	schemaTTL time.Duration,
 ) (*MySQLClient, error) {
 
 	db, err := sql.Open(
@@ -33,9 +49,12 @@ func NewMySQLClient(
 	}
 
 	return &MySQLClient{
-		db:           db,
-		queryTimeout: queryTimeout,
-		maxRows:      maxRows,
+		db:             db,
+		queryTimeout:   queryTimeout,
+		maxRows:        maxRows,
+		maxResultBytes: maxResultBytes,
+		validator:      NewSQLValidator(),
+		schemaTTL:      schemaTTL,
 	}, nil
 }
 
@@ -62,6 +81,10 @@ func (c *MySQLClient) Query(
 	query string,
 	args ...any,
 ) (*QueryResult, error) {
+
+	if err := c.validator.Validate(query); err != nil {
+		return nil, err
+	}
 
 	ctx, cancel := context.WithTimeout(
 		ctx,
@@ -92,6 +115,8 @@ func (c *MySQLClient) Query(
 		)
 	}
 
+	var resultBytes int
+
 	result := &QueryResult{
 		Columns: columns,
 		Rows:    make([][]any, 0),
@@ -101,6 +126,7 @@ func (c *MySQLClient) Query(
 
 		if len(result.Rows) >= c.maxRows {
 			result.Truncated = true
+			result.TruncateReason = "max_rows"
 			break
 		}
 
@@ -118,16 +144,44 @@ func (c *MySQLClient) Query(
 			)
 		}
 
+		rowBytes := 0
+
 		for i, value := range values {
-			if v, ok := value.([]byte); ok {
+
+			switch v := value.(type) {
+
+			case []byte:
 				values[i] = string(v)
+				rowBytes += len(v)
+
+			case string:
+				rowBytes += len(v)
+
+			default:
+				data, err := json.Marshal(v)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"marshal mysql value: %w",
+						err,
+					)
+				}
+
+				rowBytes += len(data)
 			}
+		}
+
+		if resultBytes+rowBytes > c.maxResultBytes {
+			result.Truncated = true
+			result.TruncateReason = "max_result_bytes"
+			break
 		}
 
 		result.Rows = append(
 			result.Rows,
 			values,
 		)
+
+		resultBytes += rowBytes
 	}
 
 	if err := rows.Err(); err != nil {
@@ -145,6 +199,22 @@ func (c *MySQLClient) Query(
 func (c *MySQLClient) Schema(
 	ctx context.Context,
 ) (*SchemaInfo, error) {
+
+	now := time.Now()
+
+	c.schemaCache.mu.RLock()
+
+	if c.schemaCache.schema != nil &&
+		now.Before(c.schemaCache.expiresAt) {
+
+		schema := c.schemaCache.schema
+
+		c.schemaCache.mu.RUnlock()
+
+		return schema, nil
+	}
+
+	c.schemaCache.mu.RUnlock()
 
 	const query = `
 SELECT
@@ -236,6 +306,15 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION
 			err,
 		)
 	}
+
+	c.schemaCache.mu.Lock()
+
+	c.schemaCache.schema = schema
+	c.schemaCache.expiresAt = time.Now().Add(
+		c.schemaTTL,
+	)
+
+	c.schemaCache.mu.Unlock()
 
 	return schema, nil
 }

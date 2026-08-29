@@ -37,6 +37,8 @@ func main() {
 		cfg.MySQLDSN,
 		cfg.MySQLQueryTimeout,
 		cfg.MySQLMaxRows,
+		cfg.MySQLMaxResultBytes,
+		cfg.MySQLSchemaCacheTTL,
 	)
 	if err != nil {
 		panic(err)

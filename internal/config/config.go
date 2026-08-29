@@ -13,8 +13,10 @@ type Config struct {
 	Model         string
 	MySQLDSN      string
 
-	MySQLQueryTimeout time.Duration
-	MySQLMaxRows      int
+	MySQLQueryTimeout   time.Duration
+	MySQLMaxRows        int
+	MySQLMaxResultBytes int
+	MySQLSchemaCacheTTL time.Duration
 }
 
 func Load() Config {
@@ -47,6 +49,16 @@ func Load() Config {
 		MySQLMaxRows: getIntEnv(
 			"MYSQL_MAX_ROWS",
 			100,
+		),
+
+		MySQLMaxResultBytes: getIntEnv(
+			"MYSQL_MAX_RESULT_BYTES",
+			1048576,
+		),
+
+		MySQLSchemaCacheTTL: getDurationEnv(
+			"MYSQL_SCHEMA_CACHE_TTL",
+			5*time.Minute,
 		),
 	}
 }
