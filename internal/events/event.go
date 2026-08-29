@@ -20,6 +20,9 @@ const (
 	EventAgentStarted    EventType = "agent.started"
 	EventAgentFinished   EventType = "agent.finished"
 	EventThinkingStarted EventType = "thinking.started"
+
+	EventDatabaseQueryStarted  EventType = "database.query.started"
+	EventDatabaseQueryFinished EventType = "database.query.finished"
 )
 
 type Event interface {

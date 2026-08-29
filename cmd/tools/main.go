@@ -16,6 +16,7 @@ import (
 func main() {
 
 	cfg := config.Load()
+	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
 
 	db, err := database.NewMySQLClient(
 		cfg.MySQLDSN,
@@ -23,6 +24,7 @@ func main() {
 		cfg.MySQLMaxRows,
 		cfg.MySQLMaxResultBytes,
 		cfg.MySQLSchemaCacheTTL,
+		rt,
 	)
 	if err != nil {
 		panic(err)
@@ -33,8 +35,6 @@ func main() {
 	if err := db.Ping(context.Background()); err != nil {
 		panic(err)
 	}
-
-	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
 
 	executor := tools.NewDefaultExecutor(rt, db)
 

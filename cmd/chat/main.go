@@ -33,6 +33,7 @@ func main() {
 		cfg.OllamaBaseURL,
 		cfg.Model,
 	)
+	rt := core.New(events.NewCLIObserver(events.LogLevelInfo))
 
 	db, err := database.NewMySQLClient(
 		cfg.MySQLDSN,
@@ -40,6 +41,7 @@ func main() {
 		cfg.MySQLMaxRows,
 		cfg.MySQLMaxResultBytes,
 		cfg.MySQLSchemaCacheTTL,
+		rt,
 	)
 	if err != nil {
 		panic(err)
@@ -51,7 +53,6 @@ func main() {
 		panic(err)
 	}
 
-	rt := core.New(events.NewCLIObserver(events.LogLevelInfo))
 	executor := tools.NewDefaultExecutor(
 		rt,
 		db,

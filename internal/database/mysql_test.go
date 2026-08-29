@@ -5,6 +5,9 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"go-llm/internal/core"
+	"go-llm/internal/events"
 )
 
 const (
@@ -21,6 +24,7 @@ func TestMySQLClient(t *testing.T) {
 	if dsn == "" {
 		t.Skip("MYSQL_DSN not set")
 	}
+	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
 
 	client, err := NewMySQLClient(
 		dsn,
@@ -28,6 +32,7 @@ func TestMySQLClient(t *testing.T) {
 		testMaxRows,
 		testMaxResultBytes,
 		testSchemaTTL,
+		rt,
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"go-llm/internal/core"
+	"go-llm/internal/events"
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -27,6 +30,8 @@ type MySQLClient struct {
 
 	schemaCache schemaCache
 	schemaTTL   time.Duration
+
+	core *core.Core
 }
 
 func NewMySQLClient(
@@ -35,7 +40,12 @@ func NewMySQLClient(
 	maxRows int,
 	maxResultBytes int,
 	schemaTTL time.Duration,
+	rt *core.Core,
 ) (*MySQLClient, error) {
+
+	if rt == nil {
+		rt = core.New(nil)
+	}
 
 	db, err := sql.Open(
 		"mysql",
@@ -55,6 +65,7 @@ func NewMySQLClient(
 		maxResultBytes: maxResultBytes,
 		validator:      NewSQLValidator(),
 		schemaTTL:      schemaTTL,
+		core:           rt,
 	}, nil
 }
 
@@ -80,9 +91,9 @@ func (c *MySQLClient) Query(
 	ctx context.Context,
 	query string,
 	args ...any,
-) (*QueryResult, error) {
+) (result *QueryResult, err error) {
 
-	if err := c.validator.Validate(query); err != nil {
+	if err = c.validator.Validate(query); err != nil {
 		return nil, err
 	}
 
@@ -92,12 +103,38 @@ func (c *MySQLClient) Query(
 	)
 	defer cancel()
 
+	fingerprint := fingerprintSQL(query)
+	start := time.Now()
+
+	c.core.Emit(
+		events.NewDatabaseQueryStarted(
+			fingerprint,
+		),
+	)
+
+	defer func() {
+
+		rows := 0
+
+		if result != nil {
+			rows = result.Count
+		}
+
+		c.core.Emit(
+			events.NewDatabaseQueryFinished(
+				fingerprint,
+				time.Since(start),
+				rows,
+				err,
+			),
+		)
+	}()
+
 	rows, err := c.db.QueryContext(
 		ctx,
 		query,
 		args...,
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf(
 			"execute mysql query: %w",
@@ -117,7 +154,7 @@ func (c *MySQLClient) Query(
 
 	var resultBytes int
 
-	result := &QueryResult{
+	result = &QueryResult{
 		Columns: columns,
 		Rows:    make([][]any, 0),
 	}

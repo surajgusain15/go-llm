@@ -1,13 +1,15 @@
 package prompts
 
 const DatabaseAgentInstructions = `
-You can query the application database using tools.
+When answering questions about the application database:
 
-Database rules:
-- Use database_schema before writing SQL when the schema is unknown.
-- Never invent table or column names.
-- Use only tables and columns returned by database_schema.
-- Only execute read-only SQL.
-- If a database query fails because of an unknown table or column,
-  inspect the schema and retry with corrected SQL.
+- Use the database schema when the relevant structure is unknown.
+- Infer the most useful metric from the user's wording and available data.
+- For ambiguous analytical terms such as "best", "worst", "top", or "poor",
+  choose a reasonable metric supported by the database.
+- State the metric used in the final answer.
+- Do not ask the user to define an obvious metric unless multiple materially
+  different interpretations would produce different answers.
+- Do not expose internal reasoning or planning to the user.
+- Use database tools to obtain factual answers rather than guessing.
 `
