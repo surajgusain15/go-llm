@@ -21,6 +21,20 @@ type schemaCache struct {
 	expiresAt time.Time
 }
 
+type MySQLConfig struct {
+	DSN string
+
+	QueryTimeout   time.Duration
+	MaxRows        int
+	MaxResultBytes int
+
+	SchemaTTL time.Duration
+
+	MaxJoins         int
+	MaxUnionBranches int
+	MaxSubqueryDepth int
+}
+
 type MySQLClient struct {
 	db               *sql.DB
 	queryTimeout     time.Duration
@@ -40,15 +54,8 @@ type MySQLClient struct {
 }
 
 func NewMySQLClient(
-	dsn string,
-	queryTimeout time.Duration,
-	maxRows int,
-	maxResultBytes int,
-	schemaTTL time.Duration,
+	cfg MySQLConfig,
 	rt *core.Core,
-	maxJoins int,
-	maxUnionBranches int,
-	maxSubqueryDepth int,
 ) (*MySQLClient, error) {
 
 	if rt == nil {
@@ -57,7 +64,7 @@ func NewMySQLClient(
 
 	db, err := sql.Open(
 		"mysql",
-		dsn,
+		cfg.DSN,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -67,15 +74,20 @@ func NewMySQLClient(
 	}
 
 	return &MySQLClient{
-		db:               db,
-		queryTimeout:     queryTimeout,
-		maxRows:          maxRows,
-		maxResultBytes:   maxResultBytes,
-		validator:        NewSQLValidator(maxJoins, maxUnionBranches, maxSubqueryDepth),
-		schemaTTL:        schemaTTL,
-		core:             rt,
-		maxUnionBranches: maxUnionBranches,
-		maxSubqueryDepth: maxSubqueryDepth,
+		db:             db,
+		queryTimeout:   cfg.QueryTimeout,
+		maxRows:        cfg.MaxRows,
+		maxResultBytes: cfg.MaxResultBytes,
+
+		validator: NewSQLValidator(
+			cfg.MaxJoins,
+			cfg.MaxUnionBranches,
+			cfg.MaxSubqueryDepth,
+		),
+
+		schemaTTL: cfg.SchemaTTL,
+
+		core: rt,
 	}, nil
 }
 

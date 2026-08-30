@@ -35,15 +35,17 @@ func TestMySQLClient(t *testing.T) {
 	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
 
 	client, err := NewMySQLClient(
-		dsn,
-		testQueryTimeout,
-		testMaxRows,
-		testMaxResultBytes,
-		testSchemaTTL,
+		MySQLConfig{
+			DSN:              dsn,
+			QueryTimeout:     testQueryTimeout,
+			MaxRows:          testMaxRows,
+			MaxResultBytes:   testMaxResultBytes,
+			SchemaTTL:        testSchemaTTL,
+			MaxJoins:         testMaxJoins,
+			MaxUnionBranches: testMaxUnionBranches,
+			MaxSubqueryDepth: testMaxSubqueryDepth,
+		},
 		rt,
-		testMaxJoins,
-		testMaxUnionBranches,
-		testMaxSubqueryDepth,
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -18,16 +18,20 @@ func main() {
 	cfg := config.Load()
 	rt := core.New(events.NewCLIObserver(events.LogLevelDebug))
 
+	dbConfig := database.MySQLConfig{
+		DSN:              cfg.MySQLDSN,
+		QueryTimeout:     cfg.MySQLQueryTimeout,
+		MaxRows:          cfg.MySQLMaxRows,
+		MaxResultBytes:   cfg.MySQLMaxResultBytes,
+		SchemaTTL:        cfg.MySQLSchemaCacheTTL,
+		MaxJoins:         cfg.MySQLMaxJoins,
+		MaxUnionBranches: cfg.MySQLMaxUnionBranches,
+		MaxSubqueryDepth: cfg.MySQLMaxSubqueryDepth,
+	}
+
 	db, err := database.NewMySQLClient(
-		cfg.MySQLDSN,
-		cfg.MySQLQueryTimeout,
-		cfg.MySQLMaxRows,
-		cfg.MySQLMaxResultBytes,
-		cfg.MySQLSchemaCacheTTL,
+		dbConfig,
 		rt,
-		cfg.MySQLMaxJoins,
-		cfg.MySQLMaxUnionBranches,
-		cfg.MySQLMaxSubqueryDepth,
 	)
 	if err != nil {
 		panic(err)
