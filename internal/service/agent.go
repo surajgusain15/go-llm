@@ -10,11 +10,14 @@ import (
 )
 
 const maxAgentIterations = 10
+const maxToolCalls = 10
 
 func (s *ChatService) executeAgentLoop(
 	ctx context.Context,
 	conv *conversation.Conversation,
 ) (string, error) {
+
+	toolCalls := 0
 
 	for i := range maxAgentIterations {
 
@@ -60,6 +63,14 @@ func (s *ChatService) executeAgentLoop(
 			return resp.Message.Content, nil
 		}
 
+		if toolCalls+len(resp.Message.ToolCalls) > maxToolCalls {
+			return "", errors.New(
+				"maximum tool calls exceeded",
+			)
+		}
+
+		toolCalls += len(resp.Message.ToolCalls)
+
 		err = s.executeToolCalls(
 			ctx,
 			conv,
@@ -71,6 +82,6 @@ func (s *ChatService) executeAgentLoop(
 	}
 
 	return "", errors.New(
-		"maximum tool iterations exceeded",
+		"maximum agent iterations exceeded",
 	)
 }

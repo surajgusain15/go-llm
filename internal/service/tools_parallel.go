@@ -20,7 +20,10 @@ func (s *ChatService) executeTools(
 	results := make([]ToolExecutionResult, len(calls))
 
 	group, groupCtx := errgroup.WithContext(ctx)
+
 	for i, call := range calls {
+		i := i
+		call := call
 
 		group.Go(
 			func() error {
@@ -36,7 +39,9 @@ func (s *ChatService) executeTools(
 					Err:    err,
 				}
 
-				return err
+				// Individual tool failures are represented in
+				// ToolExecutionResult and should not abort the batch.
+				return nil
 			},
 		)
 	}

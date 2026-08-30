@@ -78,28 +78,20 @@ func (s *ChatService) executeStreamingAgentLoop(
 						chunk.Chunk.Message,
 					)
 
-					toolResult, err := s.executeToolCall(
+					toolResult, toolErr := s.executeToolCall(
 						ctx,
 						toolCall,
 					)
-					if err != nil {
 
-						s.emitLLMRequestFinished(
-							start,
-							err,
-						)
-
-						out <- llm.StreamResult{
-							Err: err,
-						}
-
-						return
+					executed := ToolExecutionResult{
+						Call:   toolCall,
+						Result: toolResult,
+						Err:    toolErr,
 					}
 
 					if err := s.appendToolResult(
 						conv,
-						toolCall,
-						toolResult,
+						executed,
 					); err != nil {
 
 						s.emitLLMRequestFinished(
