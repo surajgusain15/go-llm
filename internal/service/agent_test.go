@@ -2856,3 +2856,282 @@ func TestChatService_Chat_ToolOutputIsLimitedBeforeNextLLMRequest(
 		)
 	}
 }
+
+func TestChatService_ExecuteAgentLoop_MultipleTools_PreservesSuccessfulResultsOnError(
+	t *testing.T,
+) {
+	executor := newTestToolExecutor()
+
+	executor.handlers["tool_a"] = func(
+		ctx context.Context,
+	) (*llm.ToolResult, error) {
+		return &llm.ToolResult{
+			Content: "result A",
+		}, nil
+	}
+
+	executor.handlers["tool_b"] = func(
+		ctx context.Context,
+	) (*llm.ToolResult, error) {
+		return nil, errors.New("database unavailable")
+	}
+
+	executor.handlers["tool_c"] = func(
+		ctx context.Context,
+	) (*llm.ToolResult, error) {
+		return &llm.ToolResult{
+			Content: "result C",
+		}, nil
+	}
+
+	calls := []llm.ToolCall{
+		{
+			Function: llm.ToolFunctionCall{
+				Name: "tool_a",
+			},
+		},
+		{
+			Function: llm.ToolFunctionCall{
+				Name: "tool_b",
+			},
+		},
+		{
+			Function: llm.ToolFunctionCall{
+				Name: "tool_c",
+			},
+		},
+	}
+
+	results, err := (&ChatService{
+		executor:        executor,
+		core:            core.New(events.NopObserver{}),
+		toolOutputLimit: DefaultToolOutputLimit,
+	}).executeTools(
+		context.Background(),
+		calls,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"executeTools returned unexpected error: %v",
+			err,
+		)
+	}
+
+	if len(results) != 3 {
+		t.Fatalf(
+			"expected 3 results, got %d",
+			len(results),
+		)
+	}
+
+	if results[0].Err != nil {
+		t.Fatalf(
+			"tool A unexpectedly failed: %v",
+			results[0].Err,
+		)
+	}
+
+	if results[0].Result == nil ||
+		results[0].Result.Content != "result A" {
+		t.Fatalf(
+			"unexpected tool A result: %+v",
+			results[0].Result,
+		)
+	}
+
+	if results[1].Err == nil {
+		t.Fatal("expected tool B to fail")
+	}
+
+	if results[1].Err.Error() != "database unavailable" {
+		t.Fatalf(
+			"expected database unavailable, got %q",
+			results[1].Err.Error(),
+		)
+	}
+
+	if results[2].Err != nil {
+		t.Fatalf(
+			"tool C unexpectedly failed: %v",
+			results[2].Err,
+		)
+	}
+
+	if results[2].Result == nil ||
+		results[2].Result.Content != "result C" {
+		t.Fatalf(
+			"unexpected tool C result: %+v",
+			results[2].Result,
+		)
+	}
+}
+
+func TestChatService_Chat_MultipleTools_PreservesResultsOnError(
+	t *testing.T,
+) {
+	executor := newTestToolExecutor()
+
+	executor.handlers["tool_a"] = func(
+		ctx context.Context,
+	) (*llm.ToolResult, error) {
+		return &llm.ToolResult{
+			Content: "result A",
+		}, nil
+	}
+
+	executor.handlers["tool_b"] = func(
+		ctx context.Context,
+	) (*llm.ToolResult, error) {
+		return nil, errors.New("database unavailable")
+	}
+
+	executor.handlers["tool_c"] = func(
+		ctx context.Context,
+	) (*llm.ToolResult, error) {
+		return &llm.ToolResult{
+			Content: "result C",
+		}, nil
+	}
+
+	client := &testChatClient{
+		responses: []llm.ChatResponse{
+			{
+				Model: "test-model",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							Function: llm.ToolFunctionCall{
+								Name:      "tool_a",
+								Arguments: json.RawMessage(`{}`),
+							},
+						},
+						{
+							Function: llm.ToolFunctionCall{
+								Name:      "tool_b",
+								Arguments: json.RawMessage(`{}`),
+							},
+						},
+						{
+							Function: llm.ToolFunctionCall{
+								Name:      "tool_c",
+								Arguments: json.RawMessage(`{}`),
+							},
+						},
+					},
+				},
+				Done: true,
+			},
+			{
+				Model: "test-model",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "Completed with partial tool results.",
+				},
+				Done: true,
+			},
+		},
+	}
+
+	service := &ChatService{
+		client:          client,
+		executor:        executor,
+		core:            core.New(events.NopObserver{}),
+		toolOutputLimit: DefaultToolOutputLimit,
+	}
+
+	conv := conversation.NewWithSystemPrompt(
+		DefaultSystemPrompt,
+	)
+
+	response, err := service.Chat(
+		context.Background(),
+		conv,
+		"Run all three tools.",
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"unexpected error: %v",
+			err,
+		)
+	}
+
+	if response != "Completed with partial tool results." {
+		t.Fatalf(
+			"unexpected final response: %q",
+			response,
+		)
+	}
+
+	if len(client.requests) != 2 {
+		t.Fatalf(
+			"expected 2 LLM requests, got %d",
+			len(client.requests),
+		)
+	}
+
+	secondRequest := client.requests[1]
+
+	var (
+		toolA *llm.Message
+		toolB *llm.Message
+		toolC *llm.Message
+	)
+
+	for i := range secondRequest.Messages {
+		message := &secondRequest.Messages[i]
+
+		if message.Role != llm.RoleTool {
+			continue
+		}
+
+		switch message.ToolName {
+		case "tool_a":
+			toolA = message
+
+		case "tool_b":
+			toolB = message
+
+		case "tool_c":
+			toolC = message
+		}
+	}
+
+	if toolA == nil {
+		t.Fatal("tool_a result missing from second LLM request")
+	}
+
+	if toolB == nil {
+		t.Fatal("tool_b result missing from second LLM request")
+	}
+
+	if toolC == nil {
+		t.Fatal("tool_c result missing from second LLM request")
+	}
+
+	if toolA.Content != "result A" {
+		t.Fatalf(
+			"expected tool_a result A, got %q",
+			toolA.Content,
+		)
+	}
+
+	if !strings.Contains(
+		toolB.Content,
+		"database unavailable",
+	) {
+		t.Fatalf(
+			"expected tool_b error, got %q",
+			toolB.Content,
+		)
+	}
+
+	if toolC.Content != "result C" {
+		t.Fatalf(
+			"expected tool_c result C, got %q",
+			toolC.Content,
+		)
+	}
+}
