@@ -24,7 +24,6 @@ func (s *ChatService) executeToolCalls(
 	}
 
 	for _, executed := range results {
-
 		if err := s.appendToolResult(
 			conv,
 			executed,
@@ -68,6 +67,7 @@ func (s *ChatService) appendToolResult(
 ) error {
 
 	if executed.Err != nil {
+
 		content := fmt.Sprintf(
 			"Tool execution failed: %v",
 			executed.Err,

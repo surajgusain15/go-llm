@@ -18,17 +18,12 @@ func (s *ChatService) executeStreamingAgentLoop(
 	out := make(chan llm.StreamResult)
 
 	go func() {
-
 		defer close(out)
 
-		buffer := &conversation.AssistantBuffer{}
-
-		for i := 0; i < maxAgentIterations; i++ {
+		for i := range maxAgentIterations {
 
 			s.core.Emit(
-				events.NewAgentIterationStarted(
-					i + 1,
-				),
+				events.NewAgentIterationStarted(i + 1),
 			)
 
 			req := s.buildChatRequest(
@@ -45,7 +40,10 @@ func (s *ChatService) executeStreamingAgentLoop(
 				req,
 			)
 
-			needsAnotherIteration := false
+			buffer := &conversation.AssistantBuffer{}
+			var toolCalls []llm.ToolCall
+
+			streamDone := false
 
 			for chunk := range stream {
 
@@ -60,100 +58,135 @@ func (s *ChatService) executeStreamingAgentLoop(
 					return
 				}
 
-				// Forward streamed tokens.
+				// Forward the streamed chunk to the caller.
 				out <- chunk
 
-				// Accumulate assistant text.
+				// Accumulate assistant content.
 				buffer.Write(
 					chunk.Chunk.Message.Content,
 				)
 
-				// Tool call.
+				// Accumulate all tool calls from the response.
 				if len(chunk.Chunk.Message.ToolCalls) > 0 {
-
-					toolCall := chunk.Chunk.Message.ToolCalls[0]
-
-					// Preserve assistant message containing tool call.
-					conv.AddMessage(
-						chunk.Chunk.Message,
+					toolCalls = append(
+						toolCalls,
+						chunk.Chunk.Message.ToolCalls...,
 					)
-
-					toolResult, toolErr := s.executeToolCall(
-						ctx,
-						toolCall,
-					)
-
-					executed := ToolExecutionResult{
-						Call:   toolCall,
-						Result: toolResult,
-						Err:    toolErr,
-					}
-
-					if err := s.appendToolResult(
-						conv,
-						executed,
-					); err != nil {
-
-						s.emitLLMRequestFinished(
-							start,
-							err,
-						)
-
-						out <- llm.StreamResult{
-							Err: err,
-						}
-
-						return
-					}
-
-					s.emitLLMRequestFinished(
-						start,
-						nil,
-					)
-
-					buffer = &conversation.AssistantBuffer{}
-
-					needsAnotherIteration = true
-
-					break
 				}
 
-				// Final assistant response.
 				if chunk.Chunk.Done {
+					streamDone = true
+					break
+				}
+			}
 
-					response := buffer.String()
+			if !streamDone {
 
-					conv.AddAssistantMessage(
+				err := errors.New(
+					"LLM stream ended before completion",
+				)
+
+				s.emitLLMRequestFinished(
+					start,
+					err,
+				)
+
+				out <- llm.StreamResult{
+					Err: err,
+				}
+
+				return
+			}
+
+			// Normal assistant response.
+			if len(toolCalls) == 0 {
+
+				response := buffer.String()
+
+				conv.AddAssistantMessage(
+					response,
+				)
+
+				s.core.Emit(
+					events.NewAssistantMessage(
 						response,
-					)
+					),
+				)
 
-					s.core.Emit(
-						events.NewAssistantMessage(
-							response,
-						),
-					)
+				s.emitLLMRequestFinished(
+					start,
+					nil,
+				)
+
+				s.core.Emit(
+					events.NewAgentFinished(),
+				)
+
+				return
+			}
+
+			// Preserve the assistant message that requested
+			// the tools.
+			conv.AddMessage(
+				llm.Message{
+					Role:      llm.RoleAssistant,
+					Content:   buffer.String(),
+					ToolCalls: toolCalls,
+				},
+			)
+
+			// Execute all tool calls using the same concurrent
+			// execution path as the non-streaming agent.
+			results, err := s.executeTools(
+				ctx,
+				toolCalls,
+			)
+			if err != nil {
+
+				s.emitLLMRequestFinished(
+					start,
+					err,
+				)
+
+				out <- llm.StreamResult{
+					Err: err,
+				}
+
+				return
+			}
+
+			// Add tool results to the conversation.
+			for _, executed := range results {
+
+				if err := s.appendToolResult(
+					conv,
+					executed,
+				); err != nil {
 
 					s.emitLLMRequestFinished(
 						start,
-						nil,
+						err,
 					)
 
-					s.core.Emit(
-						events.NewAgentFinished(),
-					)
+					out <- llm.StreamResult{
+						Err: err,
+					}
 
 					return
 				}
 			}
 
-			if needsAnotherIteration {
-				continue
-			}
+			s.emitLLMRequestFinished(
+				start,
+				nil,
+			)
+
+			// Continue to the next agent iteration.
 		}
 
 		out <- llm.StreamResult{
 			Err: errors.New(
-				"maximum tool iterations exceeded",
+				"maximum agent iterations exceeded",
 			),
 		}
 	}()
