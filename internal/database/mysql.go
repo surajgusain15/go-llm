@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -38,6 +39,21 @@ type MySQLConfig struct {
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
 	ConnMaxIdleTime time.Duration
+}
+
+type DBStats struct {
+	MaxOpenConnections int
+
+	OpenConnections int
+	InUse           int
+	Idle            int
+
+	WaitCount    int64
+	WaitDuration time.Duration
+
+	MaxIdleClosed     int64
+	MaxIdleTimeClosed int64
+	MaxLifetimeClosed int64
 }
 
 type MySQLClient struct {
@@ -161,7 +177,7 @@ func (c *MySQLClient) Query(
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(
+	queryCtx, cancel := context.WithTimeout(
 		ctx,
 		c.queryTimeout,
 	)
@@ -177,37 +193,39 @@ func (c *MySQLClient) Query(
 	)
 
 	defer func() {
+
 		rows := 0
-		truncated := false
-		truncateReason := ""
 
 		if result != nil {
 			rows = result.Count
-			truncated = result.Truncated
-			truncateReason = result.TruncateReason
 		}
+
+		errorKind := classifyQueryError(
+			queryCtx,
+			err,
+		)
 
 		c.core.Emit(
 			events.NewDatabaseQueryFinished(
 				fingerprint,
 				time.Since(start),
 				rows,
-				truncated,
-				truncateReason,
 				err,
+				errorKind == QueryErrorTimeout,
+				errorKind == QueryErrorCancelled,
 			),
 		)
 	}()
 
 	rows, err := c.db.QueryContext(
-		ctx,
+		queryCtx,
 		query,
 		args...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"execute mysql query: %w",
-			err,
+			normalizeQueryError(queryCtx, err),
 		)
 	}
 
@@ -293,13 +311,33 @@ func (c *MySQLClient) Query(
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf(
 			"iterate mysql rows: %w",
-			err,
+			normalizeQueryError(queryCtx, err),
 		)
 	}
 
 	result.Count = len(result.Rows)
 
 	return result, nil
+}
+
+func normalizeQueryError(
+	ctx context.Context,
+	err error,
+) error {
+
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return context.Canceled
+	}
+
+	return err
 }
 
 func (c *MySQLClient) Schema(
@@ -518,4 +556,20 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION
 	c.schemaCache.mu.Unlock()
 
 	return schema, nil
+}
+
+func (c *MySQLClient) Stats() DBStats {
+	stats := c.db.Stats()
+
+	return DBStats{
+		MaxOpenConnections: stats.MaxOpenConnections,
+		OpenConnections:    stats.OpenConnections,
+		InUse:              stats.InUse,
+		Idle:               stats.Idle,
+		WaitCount:          stats.WaitCount,
+		WaitDuration:       stats.WaitDuration,
+		MaxIdleClosed:      stats.MaxIdleClosed,
+		MaxIdleTimeClosed:  stats.MaxIdleTimeClosed,
+		MaxLifetimeClosed:  stats.MaxLifetimeClosed,
+	}
 }

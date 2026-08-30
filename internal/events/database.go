@@ -25,31 +25,38 @@ func (e DatabaseQueryStarted) Timestamp() time.Time {
 }
 
 type DatabaseQueryFinished struct {
-	Fingerprint    string
-	Duration       time.Duration
-	Rows           int
-	Truncated      bool
-	TruncateReason string
-	Err            error
-	At             time.Time
+	Fingerprint string
+	Duration    time.Duration
+	Rows        int
+	Err         error
+
+	// True when the query was cancelled because its context
+	// deadline expired.
+	TimedOut bool
+
+	// True when the query context was cancelled before completion,
+	// but not because of a deadline.
+	Cancelled bool
+
+	At time.Time
 }
 
 func NewDatabaseQueryFinished(
 	fingerprint string,
 	duration time.Duration,
 	rows int,
-	truncated bool,
-	truncateReason string,
 	err error,
+	timedOut bool,
+	cancelled bool,
 ) DatabaseQueryFinished {
 	return DatabaseQueryFinished{
-		Fingerprint:    fingerprint,
-		Duration:       duration,
-		Rows:           rows,
-		Truncated:      truncated,
-		TruncateReason: truncateReason,
-		Err:            err,
-		At:             time.Now(),
+		Fingerprint: fingerprint,
+		Duration:    duration,
+		Rows:        rows,
+		Err:         err,
+		TimedOut:    timedOut,
+		Cancelled:   cancelled,
+		At:          time.Now(),
 	}
 }
 

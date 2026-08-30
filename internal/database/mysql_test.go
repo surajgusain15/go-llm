@@ -225,3 +225,117 @@ func TestMySQLClient_ConfiguresConnectionPool(t *testing.T) {
 		)
 	}
 }
+
+func TestMySQLClientStats(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(10)
+
+	client := &MySQLClient{
+		db: db,
+	}
+
+	stats := client.Stats()
+
+	if stats.MaxOpenConnections != 20 {
+		t.Fatalf(
+			"expected max open connections 20, got %d",
+			stats.MaxOpenConnections,
+		)
+	}
+}
+
+func TestClassifyQueryError(t *testing.T) {
+
+	t.Run(
+		"no error", func(t *testing.T) {
+
+			got := classifyQueryError(
+				context.Background(),
+				nil,
+			)
+
+			if got != QueryErrorNone {
+				t.Fatalf(
+					"expected %q, got %q",
+					QueryErrorNone,
+					got,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"deadline exceeded", func(t *testing.T) {
+
+			ctx, cancel := context.WithTimeout(
+				context.Background(),
+				time.Nanosecond,
+			)
+			defer cancel()
+
+			<-ctx.Done()
+
+			got := classifyQueryError(
+				ctx,
+				ctx.Err(),
+			)
+
+			if got != QueryErrorTimeout {
+				t.Fatalf(
+					"expected %q, got %q",
+					QueryErrorTimeout,
+					got,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"cancelled", func(t *testing.T) {
+
+			ctx, cancel := context.WithCancel(
+				context.Background(),
+			)
+			cancel()
+
+			got := classifyQueryError(
+				ctx,
+				context.Canceled,
+			)
+
+			if got != QueryErrorCancelled {
+				t.Fatalf(
+					"expected %q, got %q",
+					QueryErrorCancelled,
+					got,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"database error", func(t *testing.T) {
+
+			err := fmt.Errorf("mysql connection failed")
+
+			got := classifyQueryError(
+				context.Background(),
+				err,
+			)
+
+			if got != QueryErrorDatabase {
+				t.Fatalf(
+					"expected %q, got %q",
+					QueryErrorDatabase,
+					got,
+				)
+			}
+		},
+	)
+}
