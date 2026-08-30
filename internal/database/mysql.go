@@ -33,6 +33,11 @@ type MySQLConfig struct {
 	MaxJoins         int
 	MaxUnionBranches int
 	MaxSubqueryDepth int
+
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
 }
 
 type MySQLClient struct {
@@ -71,6 +76,22 @@ func NewMySQLClient(
 			"open mysql connection: %w",
 			err,
 		)
+	}
+
+	if cfg.MaxOpenConns > 0 {
+		db.SetMaxOpenConns(cfg.MaxOpenConns)
+	}
+
+	if cfg.MaxIdleConns > 0 {
+		db.SetMaxIdleConns(cfg.MaxIdleConns)
+	}
+
+	if cfg.ConnMaxLifetime > 0 {
+		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	}
+
+	if cfg.ConnMaxIdleTime > 0 {
+		db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 	}
 
 	return &MySQLClient{

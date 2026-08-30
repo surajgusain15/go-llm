@@ -20,6 +20,11 @@ type Config struct {
 	MySQLMaxJoins         int
 	MySQLMaxUnionBranches int
 	MySQLMaxSubqueryDepth int
+
+	DBMaxOpenConns    int
+	DBMaxIdleConns    int
+	DBConnMaxLifetime time.Duration
+	DBConnMaxIdleTime time.Duration
 }
 
 func Load() Config {
@@ -77,6 +82,26 @@ func Load() Config {
 		MySQLMaxSubqueryDepth: getIntEnv(
 			"MYSQL_MAX_SUBQUERY_DEPTH",
 			3,
+		),
+
+		DBMaxOpenConns: getIntEnv(
+			"MYSQL_MAX_OPEN_CONNS",
+			20,
+		),
+
+		DBMaxIdleConns: getIntEnv(
+			"MYSQL_MAX_IDLE_CONNS",
+			10,
+		),
+
+		DBConnMaxLifetime: getDurationEnv(
+			"MYSQL_CONN_MAX_LIFETIME",
+			30*time.Minute,
+		),
+
+		DBConnMaxIdleTime: getDurationEnv(
+			"MYSQL_CONN_MAX_IDLE_TIME",
+			10*time.Minute,
 		),
 	}
 }

@@ -23,6 +23,10 @@ const (
 	testMaxSubqueryDepth = 5
 	testMaxResultBytes   = 1024 * 1024
 	testSchemaTTL        = 10 * time.Second
+	testMaxOpenConns     = 10
+	testMaxIdleConns     = 5
+	testConnMaxLifetime  = 30 * time.Minute
+	testConnMaxIdleTime  = 10 * time.Minute
 )
 
 func TestMySQLClient(t *testing.T) {
@@ -44,6 +48,10 @@ func TestMySQLClient(t *testing.T) {
 			MaxJoins:         testMaxJoins,
 			MaxUnionBranches: testMaxUnionBranches,
 			MaxSubqueryDepth: testMaxSubqueryDepth,
+			MaxOpenConns:     testMaxOpenConns,
+			MaxIdleConns:     testMaxIdleConns,
+			ConnMaxLifetime:  testConnMaxLifetime,
+			ConnMaxIdleTime:  testConnMaxIdleTime,
 		},
 		rt,
 	)
@@ -188,6 +196,32 @@ func TestMySQLClientSchema_ConcurrentRefresh(t *testing.T) {
 		t.Fatalf(
 			"schema refresh was not deduplicated: %v",
 			err,
+		)
+	}
+}
+
+func TestMySQLClient_ConfiguresConnectionPool(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	const (
+		maxOpen = 20
+		maxIdle = 10
+	)
+
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+
+	stats := db.Stats()
+
+	if stats.MaxOpenConnections != maxOpen {
+		t.Fatalf(
+			"expected max open connections %d, got %d",
+			maxOpen,
+			stats.MaxOpenConnections,
 		)
 	}
 }
