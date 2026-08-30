@@ -10,6 +10,7 @@ import (
 	"go-llm/internal/core"
 	"go-llm/internal/events"
 	"go-llm/internal/llm"
+	"go-llm/internal/service"
 )
 
 type ToolInfo struct {
@@ -23,6 +24,8 @@ type Executor struct {
 	core               *core.Core
 	defaultToolTimeout time.Duration
 	toolTimeouts       map[string]time.Duration
+	maxConcurrency     int
+	concurrency        chan struct{}
 }
 
 func NewExecutor(
@@ -45,10 +48,18 @@ func NewExecutor(
 		toolTimeouts: make(
 			map[string]time.Duration,
 		),
+		maxConcurrency: service.DefaultToolConcurrency,
 	}
 
 	for _, option := range options {
 		option(e)
+	}
+
+	if e.maxConcurrency > 0 {
+		e.concurrency = make(
+			chan struct{},
+			e.maxConcurrency,
+		)
 	}
 
 	if e.defaultToolTimeout > 0 ||
@@ -145,6 +156,18 @@ func (e *Executor) Execute(
 	input json.RawMessage,
 ) (*llm.ToolResult, error) {
 
+	if e.concurrency != nil {
+		select {
+		case e.concurrency <- struct{}{}:
+			defer func() {
+				<-e.concurrency
+			}()
+
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
 	start := time.Now()
 
 	e.core.Emit(
@@ -225,5 +248,13 @@ func WithDefaultToolTimeout(
 ) ExecutorOption {
 	return func(e *Executor) {
 		e.defaultToolTimeout = timeout
+	}
+}
+
+func WithMaxToolConcurrency(
+	maxConcurrency int,
+) ExecutorOption {
+	return func(e *Executor) {
+		e.maxConcurrency = maxConcurrency
 	}
 }

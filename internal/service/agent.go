@@ -14,6 +14,7 @@ const maxAgentIterations = 10
 const maxToolCalls = 10
 
 const DefaultToolOutputLimit = 64 * 1024
+const DefaultToolConcurrency = 8
 
 func limitToolOutput(
 	content string,
