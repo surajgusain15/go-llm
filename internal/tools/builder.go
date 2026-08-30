@@ -35,15 +35,21 @@ func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
 	executor := NewExecutor(
 		registry,
 		rt,
+
+		WithToolRetry(
+			ToolRetryPolicy{
+				MaxAttempts: 3,
+				ShouldRetry: isTransientToolError,
+				Backoff: ExponentialBackoff(
+					100*time.Millisecond,
+					2*time.Second,
+				),
+			},
+		),
+
+		WithMaxToolConcurrency(8),
+
 		WithDefaultToolTimeout(5*time.Second),
-		WithToolTimeout(
-			"database_query",
-			10*time.Second,
-		),
-		WithToolTimeout(
-			"database_schema",
-			2*time.Second,
-		),
 	)
 
 	return executor

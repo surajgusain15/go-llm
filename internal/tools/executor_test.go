@@ -251,13 +251,11 @@ func (t *concurrencyTestTool) maxConcurrent() int {
 	return t.max
 }
 
-func TestExecutor_MaxToolConcurrency(
-	t *testing.T,
-) {
+func TestExecutor_MaxToolConcurrency(t *testing.T) {
 	registry := NewRegistry()
 
-	tool := &concurrencyTestTool{
-		started: make(chan struct{}, 10),
+	tool := &blockingExecutorTestTool{
+		started: make(chan struct{}, 5),
 		release: make(chan struct{}),
 	}
 
@@ -269,66 +267,86 @@ func TestExecutor_MaxToolConcurrency(
 		WithMaxToolConcurrency(2),
 	)
 
-	var wg sync.WaitGroup
+	const executions = 5
 
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
+	results := make(chan error, executions)
 
+	for i := 0; i < executions; i++ {
 		go func() {
-			defer wg.Done()
-
 			_, err := executor.Execute(
 				context.Background(),
-				"concurrency_test",
+				"blocking",
 				json.RawMessage(`{}`),
 			)
 
-			if err != nil {
-				t.Errorf(
-					"unexpected error: %v",
-					err,
-				)
-			}
+			results <- err
 		}()
 	}
 
-	// Give the first two executions time to enter.
-	select {
-	case <-tool.started:
-	case <-time.After(time.Second):
-		t.Fatal("first tool execution did not start")
+	// Exactly two executions should be able to enter.
+	for i := 0; i < 2; i++ {
+		select {
+		case <-tool.started:
+		case <-time.After(time.Second):
+			t.Fatalf(
+				"expected execution %d to start",
+				i+1,
+			)
+		}
 	}
 
-	select {
-	case <-tool.started:
-	case <-time.After(time.Second):
-		t.Fatal("second tool execution did not start")
-	}
+	// Give the remaining goroutines a chance to reach
+	// the concurrency middleware and block.
+	time.Sleep(50 * time.Millisecond)
 
-	// No third execution should be able to start.
-	select {
-	case <-tool.started:
-		t.Fatal(
-			"expected maximum 2 concurrent executions",
+	tool.mu.Lock()
+	active := tool.active
+	maxConcurrent := tool.maxConcurrent
+	tool.mu.Unlock()
+
+	if active != 2 {
+		t.Fatalf(
+			"expected 2 active executions, got %d",
+			active,
 		)
-
-	case <-time.After(50 * time.Millisecond):
 	}
 
+	if maxConcurrent != 2 {
+		t.Fatalf(
+			"expected maximum 2 concurrent executions, got %d",
+			maxConcurrent,
+		)
+	}
+
+	// Release the first two executions.
 	close(tool.release)
 
-	wg.Wait()
+	// All five should eventually complete.
+	for i := 0; i < executions; i++ {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatalf(
+					"unexpected execution error: %v",
+					err,
+				)
+			}
 
-	if tool.maxConcurrent() > 2 {
-		t.Fatalf(
-			"expected max concurrency <= 2, got %d",
-			tool.maxConcurrent(),
-		)
+		case <-time.After(time.Second):
+			t.Fatalf(
+				"execution %d did not finish",
+				i+1,
+			)
+		}
 	}
 }
 
 type blockingExecutorTestTool struct {
-	name    string
+	mu sync.Mutex
+
+	active        int
+	maxConcurrent int
+
 	started chan struct{}
 	release chan struct{}
 }
@@ -337,12 +355,7 @@ func (t *blockingExecutorTestTool) Schema() llm.ToolDefinition {
 	return llm.ToolDefinition{
 		Type: "function",
 		Function: llm.ToolFunction{
-			Name:        t.name,
-			Description: "blocking test tool",
-			Parameters: llm.ToolParameters{
-				Type:       "object",
-				Properties: map[string]llm.ToolProperty{},
-			},
+			Name: "blocking",
 		},
 	}
 }
@@ -352,18 +365,76 @@ func (t *blockingExecutorTestTool) Execute(
 	input json.RawMessage,
 ) (*llm.ToolResult, error) {
 
-	close(t.started)
+	t.mu.Lock()
+
+	t.active++
+
+	if t.active > t.maxConcurrent {
+		t.maxConcurrent = t.active
+	}
+
+	t.mu.Unlock()
+
+	// Signal every execution that starts.
+	select {
+	case t.started <- struct{}{}:
+	default:
+	}
+
+	defer func() {
+		t.mu.Lock()
+		t.active--
+		t.mu.Unlock()
+	}()
 
 	select {
 	case <-t.release:
 		return &llm.ToolResult{
-			Content: "ok",
+			Content: "done",
 		}, nil
 
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
+
+// func (t *blockingExecutorTestTool) Execute(
+// 	ctx context.Context,
+// 	input json.RawMessage,
+// ) (*llm.ToolResult, error) {
+//
+// 	t.startedOnce.Do(
+// 		func() {
+// 			close(t.started)
+// 		},
+// 	)
+//
+// 	t.mu.Lock()
+//
+// 	t.active++
+//
+// 	if t.active > t.maxConcurrent {
+// 		t.maxConcurrent = t.active
+// 	}
+//
+// 	t.mu.Unlock()
+//
+// 	defer func() {
+// 		t.mu.Lock()
+// 		t.active--
+// 		t.mu.Unlock()
+// 	}()
+//
+// 	select {
+// 	case <-t.release:
+// 		return &llm.ToolResult{
+// 			Content: "done",
+// 		}, nil
+//
+// 	case <-ctx.Done():
+// 		return nil, ctx.Err()
+// 	}
+// }
 
 func TestExecutor_MaxToolConcurrency_CancelWhileWaiting(
 	t *testing.T,
@@ -375,7 +446,6 @@ func TestExecutor_MaxToolConcurrency_CancelWhileWaiting(
 
 	registry.Register(
 		&blockingExecutorTestTool{
-			name:    "blocking",
 			started: started,
 			release: release,
 		},

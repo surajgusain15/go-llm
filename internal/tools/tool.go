@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"go-llm/internal/llm"
 )
@@ -14,4 +15,16 @@ type Tool interface {
 		ctx context.Context,
 		input json.RawMessage,
 	) (*llm.ToolResult, error)
+}
+
+var (
+	ErrToolUnavailable = errors.New("tool unavailable")
+	ErrToolRateLimited = errors.New("tool rate limited")
+	ErrToolTemporary   = errors.New("temporary tool failure")
+)
+
+func isTransientToolError(err error) bool {
+	return errors.Is(err, ErrToolUnavailable) ||
+		errors.Is(err, ErrToolRateLimited) ||
+		errors.Is(err, ErrToolTemporary)
 }

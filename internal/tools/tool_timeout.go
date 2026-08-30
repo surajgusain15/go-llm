@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"maps"
 	"time"
 
 	"go-llm/internal/llm"
@@ -13,15 +12,13 @@ func ToolTimeouts(
 	timeouts map[string]time.Duration,
 ) ToolMiddleware {
 
-	configuredTimeouts := make(
-		map[string]time.Duration,
-		len(timeouts),
-	)
+	configured := make(map[string]time.Duration, len(timeouts))
 
-	maps.Copy(configuredTimeouts, timeouts)
+	for name, timeout := range timeouts {
+		configured[name] = timeout
+	}
 
 	return func(next Handler) Handler {
-
 		return func(
 			ctx context.Context,
 			invocation ToolInvocation,
@@ -29,8 +26,8 @@ func ToolTimeouts(
 
 			timeout := defaultTimeout
 
-			if configured, ok := configuredTimeouts[invocation.Name]; ok {
-				timeout = configured
+			if configuredTimeout, ok := configured[invocation.Name]; ok {
+				timeout = configuredTimeout
 			}
 
 			if timeout <= 0 {
@@ -43,10 +40,7 @@ func ToolTimeouts(
 			)
 			defer cancel()
 
-			return next(
-				toolCtx,
-				invocation,
-			)
+			return next(toolCtx, invocation)
 		}
 	}
 }
