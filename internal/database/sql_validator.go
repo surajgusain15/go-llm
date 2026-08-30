@@ -92,6 +92,10 @@ func (v *SQLValidator) validateSelect(
 		return err
 	}
 
+	if err := v.validateSubqueryDepth(stmt); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -107,6 +111,10 @@ func (v *SQLValidator) validateUnion(
 			branches,
 			v.maxUnionBranches,
 		)
+	}
+
+	if err := v.validateSubqueryDepth(stmt); err != nil {
+		return err
 	}
 
 	if err := v.validateTableStatement(stmt.Left); err != nil {
@@ -272,30 +280,7 @@ func (v *SQLValidator) validateSubqueryDepth(
 	stmt sqlparser.SQLNode,
 ) error {
 
-	depth := 0
-	maxDepth := 0
-
-	sqlparser.Walk(
-		func(node sqlparser.SQLNode) (bool, error) {
-
-			switch node.(type) {
-
-			case *sqlparser.Subquery:
-				depth++
-
-				if depth > maxDepth {
-					maxDepth = depth
-				}
-
-			case *sqlparser.Select,
-				*sqlparser.Union:
-				// handled through Subquery nodes
-			}
-
-			return true, nil
-		},
-		stmt,
-	)
+	maxDepth := maxSubqueryDepth(stmt, 0)
 
 	if maxDepth > v.maxSubqueryDepth {
 		return fmt.Errorf(
@@ -306,4 +291,38 @@ func (v *SQLValidator) validateSubqueryDepth(
 	}
 
 	return nil
+}
+
+func maxSubqueryDepth(
+	node sqlparser.SQLNode,
+	depth int,
+) int {
+
+	maxDepth := depth
+
+	_ = sqlparser.Walk(
+		func(node sqlparser.SQLNode) (bool, error) {
+
+			subquery, ok := node.(*sqlparser.Subquery)
+			if !ok {
+				return true, nil
+			}
+
+			nestedDepth := maxSubqueryDepth(
+				subquery.Select,
+				depth+1,
+			)
+
+			if nestedDepth > maxDepth {
+				maxDepth = nestedDepth
+			}
+
+			// We manually walk the subquery above.
+			// Don't walk it again here.
+			return false, nil
+		},
+		node,
+	)
+
+	return maxDepth
 }

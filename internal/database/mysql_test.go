@@ -14,8 +14,8 @@ const (
 	testQueryTimeout     = 10 * time.Second
 	testMaxRows          = 100
 	testMaxJoins         = 3
-	testMaxUnionBranches = 3
-	testMaxSubqueryDepth = 3
+	testMaxUnionBranches = 5
+	testMaxSubqueryDepth = 5
 	testMaxResultBytes   = 1024 * 1024
 	testSchemaTTL        = 10 * time.Second
 )

@@ -182,6 +182,63 @@ func TestSQLValidator(t *testing.T) {
 			ON p.id = t.provider_id
 	`,
 		},
+		{
+			name: "one subquery",
+			query: `
+		SELECT *
+		FROM transactions
+		WHERE provider_id IN (
+			SELECT id
+			FROM providers
+		)
+	`,
+		},
+		{
+			name: "nested subqueries within limit",
+			query: `
+		SELECT *
+		FROM transactions
+		WHERE provider_id IN (
+			SELECT id
+			FROM providers
+			WHERE id IN (
+				SELECT provider_id
+				FROM transaction_attempts
+			)
+		)
+	`,
+		},
+		{
+			name: "five union branches",
+			query: `
+		SELECT id FROM transactions
+		UNION
+		SELECT id FROM providers
+		UNION
+		SELECT id FROM services
+		UNION
+		SELECT id FROM transaction_attempts
+		UNION
+		SELECT id FROM provider_services
+	`,
+		},
+		{
+			name: "six union branches",
+			query: `
+		SELECT id FROM transactions
+		UNION
+		SELECT id FROM providers
+		UNION
+		SELECT id FROM services
+		UNION
+		SELECT id FROM transaction_attempts
+		UNION
+		SELECT id FROM provider_services
+		UNION
+		SELECT id FROM transactions
+	`,
+			shouldErr: true,
+		},
 	}
 
 	for _, tt := range tests {
