@@ -28,8 +28,11 @@ func TestToolTimeout_ParentCancellation(
 		},
 	)
 
-	middleware := ToolTimeout(
-		5 * time.Second,
+	middleware := ToolTimeouts(
+		5*time.Second,
+		map[string]time.Duration{
+			"database_query": 10 * time.Second,
+		},
 	)
 
 	wrapped := middleware(handler)
@@ -100,9 +103,10 @@ func TestToolTimeout_Expires(
 
 	timeout := 50 * time.Millisecond
 
-	wrapped := ToolTimeout(timeout)(
-		handler,
-	)
+	wrapped := ToolTimeouts(
+		timeout,
+		nil,
+	)(handler)
 
 	start := time.Now()
 
@@ -187,12 +191,18 @@ func TestToolTimeout_ConcurrentToolsHaveIndependentTimeouts(
 		},
 	)
 
-	firstWrapped := ToolTimeout(
-		50 * time.Millisecond,
+	firstWrapped := ToolTimeouts(
+		50*time.Millisecond,
+		map[string]time.Duration{
+			"first": 50 * time.Millisecond,
+		},
 	)(firstHandler)
 
-	secondWrapped := ToolTimeout(
-		200 * time.Millisecond,
+	secondWrapped := ToolTimeouts(
+		200*time.Millisecond,
+		map[string]time.Duration{
+			"second": 200 * time.Millisecond,
+		},
 	)(secondHandler)
 
 	go func() {

@@ -58,7 +58,7 @@ func TestExecutor_Execute_AppliesToolTimeout(
 	executor := NewExecutor(
 		registry,
 		nil,
-		WithToolTimeout(50*time.Millisecond),
+		WithDefaultToolTimeout(5*time.Second),
 		WithToolOutputLimit(64*1024),
 	)
 

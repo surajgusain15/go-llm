@@ -35,8 +35,15 @@ func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
 	executor := NewExecutor(
 		registry,
 		rt,
-		WithToolTimeout(5*time.Second),
-		WithToolOutputLimit(64*1024),
+		WithDefaultToolTimeout(5*time.Second),
+		WithToolTimeout(
+			"database_query",
+			10*time.Second,
+		),
+		WithToolTimeout(
+			"database_schema",
+			2*time.Second,
+		),
 	)
 
 	return executor

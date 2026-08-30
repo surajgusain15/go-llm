@@ -18,9 +18,11 @@ type ToolInfo struct {
 }
 
 type Executor struct {
-	registry    *Registry
-	middlewares []ToolMiddleware
-	core        *core.Core
+	registry           *Registry
+	middlewares        []ToolMiddleware
+	core               *core.Core
+	defaultToolTimeout time.Duration
+	toolTimeouts       map[string]time.Duration
 }
 
 func NewExecutor(
@@ -34,13 +36,31 @@ func NewExecutor(
 	}
 
 	e := &Executor{
-		registry:    registry,
-		middlewares: make([]ToolMiddleware, 0),
-		core:        rt,
+		registry: registry,
+		core:     rt,
+		middlewares: make(
+			[]ToolMiddleware,
+			0,
+		),
+		toolTimeouts: make(
+			map[string]time.Duration,
+		),
 	}
 
 	for _, option := range options {
 		option(e)
+	}
+
+	if e.defaultToolTimeout > 0 ||
+		len(e.toolTimeouts) > 0 {
+
+		e.middlewares = append(
+			e.middlewares,
+			ToolTimeouts(
+				e.defaultToolTimeout,
+				e.toolTimeouts,
+			),
+		)
 	}
 
 	return e
@@ -186,12 +206,24 @@ func (e *Executor) Execute(
 type ExecutorOption func(*Executor)
 
 func WithToolTimeout(
+	name string,
 	timeout time.Duration,
 ) ExecutorOption {
 	return func(e *Executor) {
-		e.middlewares = append(
-			e.middlewares,
-			ToolTimeout(timeout),
-		)
+		if e.toolTimeouts == nil {
+			e.toolTimeouts = make(
+				map[string]time.Duration,
+			)
+		}
+
+		e.toolTimeouts[name] = timeout
+	}
+}
+
+func WithDefaultToolTimeout(
+	timeout time.Duration,
+) ExecutorOption {
+	return func(e *Executor) {
+		e.defaultToolTimeout = timeout
 	}
 }
