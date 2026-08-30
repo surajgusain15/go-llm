@@ -26,14 +26,25 @@ func NewDatabaseQueryTool(
 }
 
 func (d *DatabaseQueryTool) Schema() llm.ToolDefinition {
-
 	return llm.ToolDefinition{
 		Type: llm.ToolTypeFunction,
 
 		Function: llm.ToolFunction{
 			Name: "database_query",
 
-			Description: "Execute a read-only SQL query against the application MySQL database and return the results.",
+			Description: `Execute exactly one read-only SQL SELECT query against the application MySQL database.
+
+Rules:
+- Only SELECT queries are allowed.
+- The query must contain exactly one SQL statement.
+- INSERT, UPDATE, DELETE, DDL, SET, SHOW, and other non-SELECT statements are not allowed.
+- Locking SELECT queries such as FOR UPDATE are not allowed.
+- CROSS JOIN is not allowed.
+- Queries with excessive JOINs, UNION branches, or nested subqueries are rejected.
+- Use database_schema first when table or column names are unknown.
+- Never invent table or column names.
+- Prefer targeted queries that return only the columns and rows needed to answer the user's question.
+- Query results are server-side limited and may be truncated.`,
 
 			Parameters: llm.ToolParameters{
 				Type: "object",
@@ -45,7 +56,7 @@ func (d *DatabaseQueryTool) Schema() llm.ToolDefinition {
 				Properties: map[string]llm.ToolProperty{
 					"query": {
 						Type:        "string",
-						Description: "A read-only SQL SELECT query.",
+						Description: "One valid read-only SELECT statement using only tables and columns confirmed by database_schema.",
 					},
 				},
 			},

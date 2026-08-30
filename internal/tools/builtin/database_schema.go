@@ -22,14 +22,24 @@ func NewDatabaseSchemaTool(
 }
 
 func (d *DatabaseSchemaTool) Schema() llm.ToolDefinition {
-
 	return llm.ToolDefinition{
 		Type: llm.ToolTypeFunction,
 
 		Function: llm.ToolFunction{
 			Name: "database_schema",
 
-			Description: "Get the tables and columns available in the application database. Use this before writing SQL when the database structure is unknown.",
+			Description: `Get the current application database schema, including available tables and their columns.
+
+Use this tool before writing SQL whenever the required table or column names are not already known with certainty.
+
+Do not invent column names. Use the returned schema to determine:
+- which tables contain the required data
+- exact column names
+- column types
+- primary/key information
+- nullable columns
+
+After inspecting the schema, use database_query to execute a read-only SELECT query.`,
 
 			Parameters: llm.ToolParameters{
 				Type: "object",
