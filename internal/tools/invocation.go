@@ -1,6 +1,8 @@
 package tools
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type ToolInvocation struct {
 	Name  string

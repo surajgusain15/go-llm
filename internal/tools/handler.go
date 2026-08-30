@@ -11,4 +11,4 @@ type Handler func(
 	invocation ToolInvocation,
 ) (*llm.ToolResult, error)
 
-type Middleware func(Handler) Handler
+type ToolMiddleware func(Handler) Handler

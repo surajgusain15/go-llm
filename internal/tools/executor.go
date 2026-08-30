@@ -19,28 +19,35 @@ type ToolInfo struct {
 
 type Executor struct {
 	registry    *Registry
-	middlewares []Middleware
+	middlewares []ToolMiddleware
 	core        *core.Core
 }
 
 func NewExecutor(
 	registry *Registry,
 	rt *core.Core,
+	options ...ExecutorOption,
 ) *Executor {
 
 	if rt == nil {
 		rt = core.New(events.NopObserver{})
 	}
 
-	return &Executor{
+	e := &Executor{
 		registry:    registry,
 		core:        rt,
-		middlewares: make([]Middleware, 0),
+		middlewares: nil,
 	}
+
+	for _, option := range options {
+		option(e)
+	}
+
+	return e
 }
 
 func (e *Executor) Use(
-	middleware Middleware,
+	middleware ToolMiddleware,
 ) {
 	e.middlewares = append(
 		e.middlewares,
@@ -174,4 +181,17 @@ func (e *Executor) Execute(
 	)
 
 	return result, err
+}
+
+type ExecutorOption func(*Executor)
+
+func WithToolTimeout(
+	timeout time.Duration,
+) ExecutorOption {
+	return func(e *Executor) {
+		e.middlewares = append(
+			e.middlewares,
+			ToolTimeout(timeout),
+		)
+	}
 }

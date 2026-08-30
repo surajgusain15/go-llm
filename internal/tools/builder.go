@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"time"
+
 	"go-llm/internal/core"
 	"go-llm/internal/database"
 	"go-llm/internal/tools/builtin"
@@ -33,6 +35,7 @@ func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
 	executor := NewExecutor(
 		registry,
 		rt,
+		WithToolTimeout(5*time.Second),
 	)
 
 	return executor
