@@ -180,8 +180,13 @@ func validateNoCrossJoins(
 	from sqlparser.TableExprs,
 ) error {
 
-	for _, expr := range from {
+	if len(from) > 1 {
+		return fmt.Errorf(
+			"implicit cross joins are not allowed",
+		)
+	}
 
+	for _, expr := range from {
 		if err := validateTableExprForCrossJoin(expr); err != nil {
 			return err
 		}

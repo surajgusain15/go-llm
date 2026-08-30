@@ -165,6 +165,23 @@ func TestSQLValidator(t *testing.T) {
 	`,
 			shouldErr: true,
 		},
+		{
+			name: "implicit cross join",
+			query: `
+		SELECT *
+		FROM transactions, providers
+	`,
+			shouldErr: true,
+		},
+		{
+			name: "multiple tables with join",
+			query: `
+		SELECT t.id, p.name
+		FROM transactions t
+		JOIN providers p
+			ON p.id = t.provider_id
+	`,
+		},
 	}
 
 	for _, tt := range tests {
