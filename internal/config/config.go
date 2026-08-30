@@ -17,6 +17,7 @@ type Config struct {
 	MySQLMaxRows        int
 	MySQLMaxResultBytes int
 	MySQLSchemaCacheTTL time.Duration
+	MySQLMaxJoins       int
 }
 
 func Load() Config {
@@ -59,6 +60,11 @@ func Load() Config {
 		MySQLSchemaCacheTTL: getDurationEnv(
 			"MYSQL_SCHEMA_CACHE_TTL",
 			5*time.Minute,
+		),
+
+		MySQLMaxJoins: getIntEnv(
+			"MYSQL_MAX_JOINS",
+			3,
 		),
 	}
 }

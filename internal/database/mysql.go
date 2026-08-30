@@ -41,6 +41,7 @@ func NewMySQLClient(
 	maxResultBytes int,
 	schemaTTL time.Duration,
 	rt *core.Core,
+	maxJoins int,
 ) (*MySQLClient, error) {
 
 	if rt == nil {
@@ -63,7 +64,7 @@ func NewMySQLClient(
 		queryTimeout:   queryTimeout,
 		maxRows:        maxRows,
 		maxResultBytes: maxResultBytes,
-		validator:      NewSQLValidator(),
+		validator:      NewSQLValidator(maxJoins),
 		schemaTTL:      schemaTTL,
 		core:           rt,
 	}, nil

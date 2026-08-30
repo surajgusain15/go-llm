@@ -28,6 +28,7 @@ func main() {
 		cfg.MySQLMaxResultBytes,
 		cfg.MySQLSchemaCacheTTL,
 		rt,
+		cfg.MySQLMaxJoins,
 	)
 	if err != nil {
 		panic(err)

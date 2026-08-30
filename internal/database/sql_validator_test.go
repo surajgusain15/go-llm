@@ -1,9 +1,13 @@
 package database
 
-import "testing"
+import (
+	"testing"
+
+	"vitess.io/vitess/go/vt/sqlparser"
+)
 
 func TestSQLValidator(t *testing.T) {
-	validator := NewSQLValidator()
+	validator := NewSQLValidator(testMaxJoins)
 
 	tests := []struct {
 		name      string
@@ -131,6 +135,36 @@ func TestSQLValidator(t *testing.T) {
 			query:     "SELECT * FROM transactions FOR UPDATE",
 			shouldErr: true,
 		},
+		{
+			name: "two joins",
+			query: `
+		SELECT
+			t.id,
+			p.name,
+			s.name
+		FROM transactions t
+		JOIN providers p
+			ON p.id = t.provider_id
+		JOIN services s
+			ON s.id = t.service_id
+	`,
+		},
+		{
+			name: "too many joins",
+			query: `
+		SELECT *
+		FROM transactions t
+		JOIN providers p
+			ON p.id = t.provider_id
+		JOIN services s
+			ON s.id = t.service_id
+		JOIN provider_services ps
+			ON ps.provider_id = p.id
+		JOIN transactions t2
+			ON t2.id = ps.id
+	`,
+			shouldErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -154,5 +188,51 @@ func TestSQLValidator(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+func TestDebugCrossJoinAST(t *testing.T) {
+	parser := sqlparser.NewTestParser()
+
+	stmt, err := parser.Parse(
+		`
+		SELECT *
+		FROM transactions
+		CROSS JOIN providers
+	`,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("statement type: %T", stmt)
+
+	selectStmt, ok := stmt.(*sqlparser.Select)
+	if !ok {
+		t.Fatalf("expected *sqlparser.Select, got %T", stmt)
+	}
+
+	for i, expr := range selectStmt.From {
+		t.Logf("FROM[%d]: %T", i, expr)
+
+		if join, ok := expr.(*sqlparser.JoinTableExpr); ok {
+			t.Logf(
+				"JOIN[%d]: type=%d typeString=%q condition=%#v",
+				i,
+				join.Join,
+				join.Join.ToString(),
+				join.Condition,
+			)
+
+			t.Logf(
+				"LEFT: %T",
+				join.LeftExpr,
+			)
+
+			t.Logf(
+				"RIGHT: %T",
+				join.RightExpr,
+			)
+		}
 	}
 }
