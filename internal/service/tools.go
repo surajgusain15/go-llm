@@ -26,7 +26,9 @@ func (s *ChatService) executeToolCalls(
 	for _, executed := range results {
 		if err := s.appendToolResult(
 			conv,
-			executed,
+			executed.Call,
+			executed.Result,
+			executed.Err,
 		); err != nil {
 			return err
 		}
@@ -63,40 +65,32 @@ func toolResultToString(
 
 func (s *ChatService) appendToolResult(
 	conv *conversation.Conversation,
-	executed ToolExecutionResult,
+	call llm.ToolCall,
+	result *llm.ToolResult,
+	toolErr error,
 ) error {
 
-	if executed.Err != nil {
-
-		content := fmt.Sprintf(
-			"Tool execution failed: %v",
-			executed.Err,
-		)
-
+	if toolErr != nil {
 		conv.AddToolMessage(
-			executed.Call.Function.Name,
-			content,
+			call.Function.Name,
+			fmt.Sprintf(
+				"Tool execution failed: %v",
+				toolErr,
+			),
 		)
 
 		return nil
 	}
 
-	if executed.Result == nil {
-		return fmt.Errorf(
-			"tool %q returned nil result without error",
-			executed.Call.Function.Name,
-		)
-	}
-
 	content, err := toolResultToString(
-		executed.Result.Content,
+		result.Content,
 	)
 	if err != nil {
 		return err
 	}
 
 	conv.AddToolMessage(
-		executed.Call.Function.Name,
+		call.Function.Name,
 		content,
 	)
 

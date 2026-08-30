@@ -160,7 +160,9 @@ func (s *ChatService) executeStreamingAgentLoop(
 
 				if err := s.appendToolResult(
 					conv,
-					executed,
+					executed.Call,
+					executed.Result,
+					executed.Err,
 				); err != nil {
 
 					s.emitLLMRequestFinished(
