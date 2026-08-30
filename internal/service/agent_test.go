@@ -2673,3 +2673,186 @@ func TestChatService_ExecuteStreamingAgentLoop_CancelDuringLLMStream(
 		)
 	}
 }
+
+func TestLimitToolOutput_UnderLimit(
+	t *testing.T,
+) {
+	content := "small result"
+
+	got := limitToolOutput(
+		content,
+		100,
+	)
+
+	if got != content {
+		t.Fatalf(
+			"expected unchanged content, got %q",
+			got,
+		)
+	}
+}
+
+func TestLimitToolOutput_OverLimit(
+	t *testing.T,
+) {
+	content := strings.Repeat("x", 100)
+
+	got := limitToolOutput(
+		content,
+		50,
+	)
+
+	if len(got) != 50 {
+		t.Fatalf(
+			"expected exactly 50 bytes, got %d",
+			len(got),
+		)
+	}
+
+	if !strings.Contains(
+		got,
+		"[tool output truncated:",
+	) {
+		t.Fatalf(
+			"expected truncation marker, got %q",
+			got,
+		)
+	}
+}
+
+func TestLimitToolOutput_Unicode(
+	t *testing.T,
+) {
+	content := strings.Repeat("😀", 100)
+
+	got := limitToolOutput(
+		content,
+		50,
+	)
+
+	if len(got) != 48 {
+		t.Fatalf(
+			"expected exactly 48 bytes, got %d",
+			len(got),
+		)
+	}
+}
+
+func TestChatService_Chat_ToolOutputIsLimitedBeforeNextLLMRequest(
+	t *testing.T,
+) {
+	executor := newTestToolExecutor()
+
+	largeOutput := strings.Repeat("x", 100)
+
+	executor.handlers["database_query"] = func(
+		ctx context.Context,
+	) (*llm.ToolResult, error) {
+		return &llm.ToolResult{
+			Content: largeOutput,
+		}, nil
+	}
+
+	client := &testChatClient{
+		responses: []llm.ChatResponse{
+			{
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							Function: llm.ToolFunctionCall{
+								Name: "database_query",
+								Arguments: json.RawMessage(
+									`{"query":"SELECT 1"}`,
+								),
+							},
+						},
+					},
+				},
+				Done: true,
+			},
+			{
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "The query returned results.",
+				},
+				Done: true,
+			},
+		},
+	}
+
+	service := NewChatService(
+		client,
+		executor,
+		nil,
+	)
+
+	// Keep this test fast and deterministic.
+	service.toolOutputLimit = 50
+
+	conv := service.NewConversation()
+
+	_, err := service.Chat(
+		context.Background(),
+		conv,
+		"Run a database query.",
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"unexpected error: %v",
+			err,
+		)
+	}
+
+	if len(client.requests) != 2 {
+		t.Fatalf(
+			"expected 2 LLM requests, got %d",
+			len(client.requests),
+		)
+	}
+
+	secondRequest := client.requests[1]
+
+	var toolMessage *llm.Message
+
+	for i := range secondRequest.Messages {
+		message := &secondRequest.Messages[i]
+
+		if message.Role == llm.RoleTool {
+			toolMessage = message
+			break
+		}
+	}
+
+	if toolMessage == nil {
+		t.Fatal("expected tool message in second LLM request")
+	}
+
+	if len(toolMessage.Content) > service.toolOutputLimit {
+		t.Fatalf(
+			"tool output exceeded limit: got %d bytes, limit %d",
+			len(toolMessage.Content),
+			service.toolOutputLimit,
+		)
+	}
+
+	if !strings.Contains(
+		toolMessage.Content,
+		"[tool output truncated:",
+	) {
+		t.Fatalf(
+			"expected truncation marker, got %q",
+			toolMessage.Content,
+		)
+	}
+
+	if strings.Contains(
+		toolMessage.Content,
+		largeOutput,
+	) {
+		t.Fatal(
+			"full oversized tool output leaked into LLM request",
+		)
+	}
+}

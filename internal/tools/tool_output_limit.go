@@ -2,9 +2,9 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 
 	"go-llm/internal/llm"
+	"go-llm/internal/llmutil"
 )
 
 func ToolOutputLimit(
@@ -22,24 +22,26 @@ func ToolOutputLimit(
 				ctx,
 				invocation,
 			)
+
 			if err != nil || result == nil {
 				return result, err
 			}
 
-			data, err := json.Marshal(result.Content)
+			content, err := llmutil.ToolResultToString(
+				result.Content,
+			)
 			if err != nil {
 				return nil, err
 			}
 
-			if len(data) <= maxBytes {
+			if len(content) <= maxBytes {
 				return result, nil
 			}
 
 			return &llm.ToolResult{
 				Content: map[string]any{
 					"truncated":      true,
-					"message":        "Tool output exceeded the maximum size and was truncated.",
-					"original_bytes": len(data),
+					"original_bytes": len(content),
 					"max_bytes":      maxBytes,
 				},
 				Metadata: result.Metadata,

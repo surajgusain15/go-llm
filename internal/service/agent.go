@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	"go-llm/internal/conversation"
 	"go-llm/internal/events"
@@ -11,6 +12,34 @@ import (
 
 const maxAgentIterations = 10
 const maxToolCalls = 10
+
+const DefaultToolOutputLimit = 64 * 1024
+
+func limitToolOutput(
+	content string,
+	maxBytes int,
+) string {
+
+	if maxBytes <= 0 || len(content) <= maxBytes {
+		return content
+	}
+
+	marker := "\n\n[tool output truncated: exceeded maximum size]"
+
+	if maxBytes <= len(marker) {
+		return marker[:maxBytes]
+	}
+
+	limit := maxBytes - len(marker)
+
+	for limit > 0 && !utf8.ValidString(
+		content[:limit],
+	) {
+		limit--
+	}
+
+	return content[:limit] + marker
+}
 
 func (s *ChatService) executeAgentLoop(
 	ctx context.Context,

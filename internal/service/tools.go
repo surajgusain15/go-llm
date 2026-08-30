@@ -82,12 +82,15 @@ func (s *ChatService) appendToolResult(
 		return nil
 	}
 
-	content, err := toolResultToString(
-		result.Content,
-	)
+	content, err := toolResultToString(result.Content)
 	if err != nil {
 		return err
 	}
+
+	content = limitToolOutput(
+		content,
+		s.toolOutputLimit,
+	)
 
 	conv.AddToolMessage(
 		call.Function.Name,

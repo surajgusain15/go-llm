@@ -14,9 +14,10 @@ You are a helpful AI assistant.
 `
 
 type ChatService struct {
-	client   llm.Client
-	executor ToolExecutor
-	core     *core.Core
+	client          llm.Client
+	executor        ToolExecutor
+	core            *core.Core
+	toolOutputLimit int
 }
 
 func NewChatService(
@@ -30,9 +31,10 @@ func NewChatService(
 	}
 
 	return &ChatService{
-		client:   client,
-		executor: executor,
-		core:     rt,
+		client:          client,
+		executor:        executor,
+		core:            rt,
+		toolOutputLimit: DefaultToolOutputLimit,
 	}
 }
 
