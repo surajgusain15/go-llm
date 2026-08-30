@@ -12,6 +12,7 @@ import (
 	"go-llm/internal/events"
 
 	_ "github.com/go-sql-driver/mysql"
+	"golang.org/x/sync/singleflight"
 )
 
 type schemaCache struct {
@@ -29,6 +30,8 @@ type MySQLClient struct {
 	maxSubqueryDepth int
 
 	validator *SQLValidator
+
+	schemaFlight singleflight.Group
 
 	schemaCache schemaCache
 	schemaTTL   time.Duration
@@ -265,6 +268,95 @@ func (c *MySQLClient) Schema(
 
 	c.schemaCache.mu.RUnlock()
 
+	type result struct {
+		schema *SchemaInfo
+		err    error
+	}
+
+	resultCh := make(chan result, 1)
+
+	go func() {
+
+		value, err, _ := c.schemaFlight.Do(
+			"schema",
+			func() (any, error) {
+
+				// Re-check after entering singleflight.
+				// Another request may have refreshed the cache
+				// while this request was waiting.
+				now := time.Now()
+
+				c.schemaCache.mu.RLock()
+
+				if c.schemaCache.schema != nil &&
+					now.Before(c.schemaCache.expiresAt) {
+
+					schema := c.schemaCache.schema
+
+					c.schemaCache.mu.RUnlock()
+
+					return schema, nil
+				}
+
+				c.schemaCache.mu.RUnlock()
+
+				// IMPORTANT:
+				// Do not use the caller's context here.
+				// The refresh belongs to the cache, not to
+				// an individual request.
+				refreshCtx, cancel := context.WithTimeout(
+					context.Background(),
+					c.queryTimeout,
+				)
+				defer cancel()
+
+				return c.refreshSchema(refreshCtx)
+			},
+		)
+
+		if err != nil {
+			resultCh <- result{
+				err: err,
+			}
+			return
+		}
+
+		schema, ok := value.(*SchemaInfo)
+		if !ok {
+			resultCh <- result{
+				err: fmt.Errorf(
+					"invalid schema cache result type %T",
+					value,
+				),
+			}
+			return
+		}
+
+		resultCh <- result{
+			schema: schema,
+		}
+	}()
+
+	select {
+
+	case result := <-resultCh:
+
+		if result.err != nil {
+			return nil, result.err
+		}
+
+		return result.schema, nil
+
+	case <-ctx.Done():
+
+		return nil, ctx.Err()
+	}
+}
+
+func (c *MySQLClient) refreshSchema(
+	ctx context.Context,
+) (*SchemaInfo, error) {
+
 	const query = `
 SELECT
 	TABLE_NAME,
@@ -278,8 +370,14 @@ WHERE TABLE_SCHEMA = DATABASE()
 ORDER BY TABLE_NAME, ORDINAL_POSITION
 `
 
-	rows, err := c.db.QueryContext(
+	queryCtx, cancel := context.WithTimeout(
 		ctx,
+		c.queryTimeout,
+	)
+	defer cancel()
+
+	rows, err := c.db.QueryContext(
+		queryCtx,
 		query,
 	)
 	if err != nil {
@@ -325,8 +423,8 @@ ORDER BY TABLE_NAME, ORDINAL_POSITION
 		index, exists := tableIndex[tableName]
 
 		if !exists {
-
 			index = len(schema.Tables)
+
 			tableIndex[tableName] = index
 
 			schema.Tables = append(
