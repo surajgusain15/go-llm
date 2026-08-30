@@ -339,3 +339,105 @@ func TestClassifyQueryError(t *testing.T) {
 		},
 	)
 }
+
+func TestMySQLClientSchema_RefreshFailureDoesNotPoisonCache(
+	t *testing.T,
+) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	client := &MySQLClient{
+		db:           db,
+		schemaTTL:    time.Minute,
+		queryTimeout: 5 * time.Second,
+		core:         core.New(events.NopObserver{}),
+		schemaFlight: singleflight.Group{},
+	}
+
+	// First refresh fails.
+	mock.ExpectQuery(
+		"SELECT\\s+TABLE_NAME",
+	).WillReturnError(
+		fmt.Errorf("schema database unavailable"),
+	)
+
+	_, err = client.Schema(context.Background())
+	if err == nil {
+		t.Fatal("expected schema refresh error")
+	}
+
+	// Failed refresh must not populate the cache.
+	client.schemaCache.mu.RLock()
+
+	cachedSchema := client.schemaCache.schema
+	expiresAt := client.schemaCache.expiresAt
+
+	client.schemaCache.mu.RUnlock()
+
+	if cachedSchema != nil {
+		t.Fatal("expected schema cache to remain empty")
+	}
+
+	if !expiresAt.IsZero() {
+		t.Fatal("expected schema cache expiry to remain zero")
+	}
+
+	// Second refresh succeeds.
+	rows := sqlmock.NewRows(
+		[]string{
+			"TABLE_NAME",
+			"COLUMN_NAME",
+			"COLUMN_TYPE",
+			"IS_NULLABLE",
+			"COLUMN_KEY",
+			"COLUMN_DEFAULT",
+		},
+	).AddRow(
+		"transactions",
+		"id",
+		"bigint",
+		"NO",
+		"PRI",
+		nil,
+	)
+
+	mock.ExpectQuery(
+		"SELECT\\s+TABLE_NAME",
+	).WillReturnRows(rows)
+
+	schema, err := client.Schema(context.Background())
+	if err != nil {
+		t.Fatalf(
+			"expected second schema refresh to succeed: %v",
+			err,
+		)
+	}
+
+	if schema == nil {
+		t.Fatal("expected schema")
+	}
+
+	if len(schema.Tables) != 1 {
+		t.Fatalf(
+			"expected 1 table, got %d",
+			len(schema.Tables),
+		)
+	}
+
+	if schema.Tables[0].Name != "transactions" {
+		t.Fatalf(
+			"expected transactions table, got %q",
+			schema.Tables[0].Name,
+		)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf(
+			"unexpected database interactions: %v",
+			err,
+		)
+	}
+}
