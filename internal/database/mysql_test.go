@@ -441,3 +441,187 @@ func TestMySQLClientSchema_RefreshFailureDoesNotPoisonCache(
 		)
 	}
 }
+
+func TestMySQLClient_Query_EmitsObservabilityEvents(
+	t *testing.T,
+) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+
+	observer := &recordingObserver{}
+
+	client := &MySQLClient{
+		db:             db,
+		queryTimeout:   5 * time.Second,
+		maxRows:        10,
+		maxResultBytes: 1024,
+		validator:      NewSQLValidator(3, 5, 5),
+		core:           core.New(observer),
+	}
+
+	rows := sqlmock.NewRows(
+		[]string{"id"},
+	).AddRow(1).AddRow(2)
+
+	mock.ExpectQuery(
+		"SELECT id FROM transactions",
+	).WillReturnRows(rows)
+
+	result, err := client.Query(
+		context.Background(),
+		"SELECT id FROM transactions",
+	)
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+
+	if result.Count != 2 {
+		t.Fatalf(
+			"expected 2 rows, got %d",
+			result.Count,
+		)
+	}
+
+	recorded := observer.Events()
+
+	if len(recorded) != 2 {
+		t.Fatalf(
+			"expected 2 events, got %d",
+			len(recorded),
+		)
+	}
+
+	started, ok := recorded[0].(events.DatabaseQueryStarted)
+	if !ok {
+		t.Fatalf(
+			"expected DatabaseQueryStarted, got %T",
+			recorded[0],
+		)
+	}
+
+	finished, ok := recorded[1].(events.DatabaseQueryFinished)
+	if !ok {
+		t.Fatalf(
+			"expected DatabaseQueryFinished, got %T",
+			recorded[1],
+		)
+	}
+
+	if started.Fingerprint == "" {
+		t.Fatal("expected query fingerprint")
+	}
+
+	if finished.Fingerprint != started.Fingerprint {
+		t.Fatalf(
+			"fingerprint mismatch: started=%q finished=%q",
+			started.Fingerprint,
+			finished.Fingerprint,
+		)
+	}
+
+	if finished.Duration <= 0 {
+		t.Fatal("expected positive query duration")
+	}
+
+	if finished.Rows != 2 {
+		t.Fatalf(
+			"expected 2 rows in event, got %d",
+			finished.Rows,
+		)
+	}
+
+	if finished.Err != nil {
+		t.Fatalf(
+			"expected no error, got %v",
+			finished.Err,
+		)
+	}
+
+	if finished.TimedOut {
+		t.Fatal("successful query cannot be marked timed out")
+	}
+
+	if finished.Cancelled {
+		t.Fatal("successful query cannot be marked cancelled")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf(
+			"unexpected database interaction: %v",
+			err,
+		)
+	}
+}
+
+func TestMySQLClient_Query_EmitsErrorEvent(
+	t *testing.T,
+) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sqlmock: %v", err)
+	}
+
+	observer := &recordingObserver{}
+
+	client := &MySQLClient{
+		db:             db,
+		queryTimeout:   5 * time.Second,
+		maxRows:        10,
+		maxResultBytes: 1024,
+		validator:      NewSQLValidator(3, 5, 5),
+		core:           core.New(observer),
+	}
+
+	mock.ExpectQuery(
+		"SELECT 1",
+	).WillReturnError(
+		fmt.Errorf("connection failed"),
+	)
+
+	_, err = client.Query(
+		context.Background(),
+		"SELECT 1",
+	)
+
+	if err == nil {
+		t.Fatal("expected query error")
+	}
+
+	recorded := observer.Events()
+
+	if len(recorded) != 2 {
+		t.Fatalf(
+			"expected 2 events, got %d",
+			len(recorded),
+		)
+	}
+
+	finished, ok := recorded[1].(events.DatabaseQueryFinished)
+	if !ok {
+		t.Fatalf(
+			"expected DatabaseQueryFinished, got %T",
+			recorded[1],
+		)
+	}
+
+	if finished.Err == nil {
+		t.Fatal("expected error in finished event")
+	}
+
+	if finished.TimedOut {
+		t.Fatal("database error should not be marked timeout")
+	}
+
+	if finished.Cancelled {
+		t.Fatal("database error should not be marked cancelled")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf(
+			"unexpected database interaction: %v",
+			err,
+		)
+	}
+}

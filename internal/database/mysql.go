@@ -59,6 +59,7 @@ type DBStats struct {
 type MySQLClient struct {
 	db               *sql.DB
 	queryTimeout     time.Duration
+	maxJoins         int
 	maxRows          int
 	maxResultBytes   int
 	maxUnionBranches int
@@ -113,6 +114,7 @@ func NewMySQLClient(
 	return &MySQLClient{
 		db:             db,
 		queryTimeout:   cfg.QueryTimeout,
+		maxJoins:       cfg.MaxJoins,
 		maxRows:        cfg.MaxRows,
 		maxResultBytes: cfg.MaxResultBytes,
 
