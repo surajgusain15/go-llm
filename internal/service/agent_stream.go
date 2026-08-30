@@ -82,6 +82,19 @@ func (s *ChatService) executeStreamingAgentLoop(
 
 			if !streamDone {
 
+				if err := ctx.Err(); err != nil {
+					s.emitLLMRequestFinished(
+						start,
+						err,
+					)
+
+					out <- llm.StreamResult{
+						Err: err,
+					}
+
+					return
+				}
+
 				err := errors.New(
 					"LLM stream ended before completion",
 				)

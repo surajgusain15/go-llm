@@ -2511,3 +2511,165 @@ func TestChatService_Chat_ToolErrorPreservesConversation(
 		)
 	}
 }
+
+type blockingLLMStreamClient struct {
+	mu sync.Mutex
+
+	requests []llm.ChatRequest
+
+	firstChunk llm.StreamResult
+}
+
+func (c *blockingLLMStreamClient) Chat(
+	ctx context.Context,
+	req llm.ChatRequest,
+) (llm.ChatResponse, error) {
+	return llm.ChatResponse{}, fmt.Errorf(
+		"Chat should not be called",
+	)
+}
+
+func (c *blockingLLMStreamClient) Stream(
+	ctx context.Context,
+	req llm.ChatRequest,
+) <-chan llm.StreamResult {
+
+	c.mu.Lock()
+	c.requests = append(
+		c.requests,
+		req,
+	)
+	c.mu.Unlock()
+
+	out := make(chan llm.StreamResult)
+
+	go func() {
+		defer close(out)
+
+		// Send one chunk immediately.
+		out <- c.firstChunk
+
+		// Simulate an LLM connection that remains open.
+		// It must terminate when the request context is cancelled.
+		<-ctx.Done()
+	}()
+
+	return out
+}
+
+func TestChatService_ExecuteStreamingAgentLoop_CancelDuringLLMStream(
+	t *testing.T,
+) {
+	client := &blockingLLMStreamClient{
+		firstChunk: llm.StreamResult{
+			Chunk: llm.StreamChunk{
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "Thinking...",
+				},
+			},
+		},
+	}
+
+	service := NewChatService(
+		client,
+		newTestToolExecutor(),
+		nil,
+	)
+
+	conv := conversation.NewWithSystemPrompt(
+		DefaultSystemPrompt,
+	)
+
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
+	defer cancel()
+
+	stream := service.executeStreamingAgentLoop(
+		ctx,
+		conv,
+	)
+
+	// The first token must arrive.
+	select {
+	case result := <-stream:
+		if result.Err != nil {
+			t.Fatalf(
+				"unexpected initial stream error: %v",
+				result.Err,
+			)
+		}
+
+		if result.Chunk.Message.Content != "Thinking..." {
+			t.Fatalf(
+				"unexpected first chunk: %q",
+				result.Chunk.Message.Content,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("LLM stream did not start")
+	}
+
+	// Cancel while the LLM stream is still active.
+	cancel()
+
+	done := make(chan error, 1)
+
+	go func() {
+		var streamErr error
+
+		for result := range stream {
+			if result.Err != nil {
+				streamErr = result.Err
+			}
+		}
+
+		done <- streamErr
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf(
+				"expected context.Canceled, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal(
+			"streaming agent loop did not terminate after cancellation",
+		)
+	}
+
+	client.mu.Lock()
+	requestCount := len(client.requests)
+	client.mu.Unlock()
+
+	if requestCount != 1 {
+		t.Fatalf(
+			"expected exactly 1 LLM request, got %d",
+			requestCount,
+		)
+	}
+
+	messages := conv.Messages()
+
+	// No final assistant message should be committed because
+	// the stream never completed.
+	if len(messages) != 1 {
+		t.Fatalf(
+			"expected only system message, got %d messages",
+			len(messages),
+		)
+	}
+
+	if messages[0].Role != llm.RoleSystem {
+		t.Fatalf(
+			"expected system message, got %q",
+			messages[0].Role,
+		)
+	}
+}
