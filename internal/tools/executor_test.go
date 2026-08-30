@@ -59,6 +59,7 @@ func TestExecutor_Execute_AppliesToolTimeout(
 		registry,
 		nil,
 		WithToolTimeout(50*time.Millisecond),
+		WithToolOutputLimit(64*1024),
 	)
 
 	start := time.Now()
@@ -96,6 +97,86 @@ func TestExecutor_Execute_AppliesToolTimeout(
 		t.Fatalf(
 			"executor returned before configured timeout: %v",
 			elapsed,
+		)
+	}
+}
+
+type largeOutputTestTool struct{}
+
+func (t *largeOutputTestTool) Schema() llm.ToolDefinition {
+	return llm.ToolDefinition{
+		Type: "function",
+		Function: llm.ToolFunction{
+			Name:        "large_output",
+			Description: "returns a large result",
+			Parameters: llm.ToolParameters{
+				Type:       "object",
+				Properties: map[string]llm.ToolProperty{},
+			},
+		},
+	}
+}
+
+func (t *largeOutputTestTool) Execute(
+	ctx context.Context,
+	input json.RawMessage,
+) (*llm.ToolResult, error) {
+	return &llm.ToolResult{
+		Content: "this output is definitely larger than ten bytes",
+	}, nil
+}
+
+func TestExecutor_Execute_AppliesToolOutputLimit(
+	t *testing.T,
+) {
+	registry := NewRegistry()
+
+	registry.Register(
+		&largeOutputTestTool{},
+	)
+
+	executor := NewExecutor(
+		registry,
+		nil,
+		WithToolOutputLimit(10),
+	)
+
+	result, err := executor.Execute(
+		context.Background(),
+		"large_output",
+		json.RawMessage(`{}`),
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"unexpected error: %v",
+			err,
+		)
+	}
+
+	if result == nil {
+		t.Fatal("expected tool result")
+	}
+
+	content, ok := result.Content.(map[string]any)
+	if !ok {
+		t.Fatalf(
+			"expected truncation metadata object, got %T",
+			result.Content,
+		)
+	}
+
+	if content["truncated"] != true {
+		t.Fatalf(
+			"expected truncated=true, got %v",
+			content["truncated"],
+		)
+	}
+
+	if content["max_bytes"] != 10 {
+		t.Fatalf(
+			"expected max_bytes=10, got %v",
+			content["max_bytes"],
 		)
 	}
 }

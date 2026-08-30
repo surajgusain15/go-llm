@@ -35,8 +35,8 @@ func NewExecutor(
 
 	e := &Executor{
 		registry:    registry,
+		middlewares: make([]ToolMiddleware, 0),
 		core:        rt,
-		middlewares: nil,
 	}
 
 	for _, option := range options {

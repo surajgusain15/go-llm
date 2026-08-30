@@ -36,6 +36,7 @@ func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
 		registry,
 		rt,
 		WithToolTimeout(5*time.Second),
+		WithToolOutputLimit(64*1024),
 	)
 
 	return executor
