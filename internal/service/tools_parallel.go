@@ -2,8 +2,7 @@ package service
 
 import (
 	"context"
-
-	"golang.org/x/sync/errgroup"
+	"sync"
 
 	"go-llm/internal/llm"
 )
@@ -19,34 +18,34 @@ func (s *ChatService) executeTools(
 
 	results := make([]ToolExecutionResult, len(calls))
 
-	group, groupCtx := errgroup.WithContext(ctx)
+	var wg sync.WaitGroup
+
+	wg.Add(len(calls))
 
 	for i, call := range calls {
+
 		i := i
 		call := call
 
-		group.Go(
-			func() error {
+		go func() {
+			defer wg.Done()
 
-				result, err := s.executeToolCall(
-					groupCtx,
-					call,
-				)
+			result, err := s.executeToolCall(
+				ctx,
+				call,
+			)
 
-				results[i] = ToolExecutionResult{
-					Call:   call,
-					Result: result,
-					Err:    err,
-				}
-
-				// Individual tool failures are represented in
-				// ToolExecutionResult and should not abort the batch.
-				return nil
-			},
-		)
+			results[i] = ToolExecutionResult{
+				Call:   call,
+				Result: result,
+				Err:    err,
+			}
+		}()
 	}
 
-	if err := group.Wait(); err != nil {
+	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
