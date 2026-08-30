@@ -43,6 +43,8 @@ func main() {
 		cfg.MySQLSchemaCacheTTL,
 		rt,
 		cfg.MySQLMaxJoins,
+		cfg.MySQLMaxUnionBranches,
+		cfg.MySQLMaxSubqueryDepth,
 	)
 	if err != nil {
 		panic(err)

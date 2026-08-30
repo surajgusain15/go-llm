@@ -11,11 +11,13 @@ import (
 )
 
 const (
-	testQueryTimeout   = 10 * time.Second
-	testMaxRows        = 100
-	testMaxJoins       = 3
-	testMaxResultBytes = 1024 * 1024
-	testSchemaTTL      = 10 * time.Second
+	testQueryTimeout     = 10 * time.Second
+	testMaxRows          = 100
+	testMaxJoins         = 3
+	testMaxUnionBranches = 3
+	testMaxSubqueryDepth = 3
+	testMaxResultBytes   = 1024 * 1024
+	testSchemaTTL        = 10 * time.Second
 )
 
 func TestMySQLClient(t *testing.T) {
@@ -35,6 +37,8 @@ func TestMySQLClient(t *testing.T) {
 		testSchemaTTL,
 		rt,
 		testMaxJoins,
+		testMaxUnionBranches,
+		testMaxSubqueryDepth,
 	)
 	if err != nil {
 		t.Fatal(err)

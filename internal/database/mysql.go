@@ -21,10 +21,12 @@ type schemaCache struct {
 }
 
 type MySQLClient struct {
-	db             *sql.DB
-	queryTimeout   time.Duration
-	maxRows        int
-	maxResultBytes int
+	db               *sql.DB
+	queryTimeout     time.Duration
+	maxRows          int
+	maxResultBytes   int
+	maxUnionBranches int
+	maxSubqueryDepth int
 
 	validator *SQLValidator
 
@@ -42,6 +44,8 @@ func NewMySQLClient(
 	schemaTTL time.Duration,
 	rt *core.Core,
 	maxJoins int,
+	maxUnionBranches int,
+	maxSubqueryDepth int,
 ) (*MySQLClient, error) {
 
 	if rt == nil {
@@ -60,13 +64,15 @@ func NewMySQLClient(
 	}
 
 	return &MySQLClient{
-		db:             db,
-		queryTimeout:   queryTimeout,
-		maxRows:        maxRows,
-		maxResultBytes: maxResultBytes,
-		validator:      NewSQLValidator(maxJoins),
-		schemaTTL:      schemaTTL,
-		core:           rt,
+		db:               db,
+		queryTimeout:     queryTimeout,
+		maxRows:          maxRows,
+		maxResultBytes:   maxResultBytes,
+		validator:        NewSQLValidator(maxJoins, maxUnionBranches, maxSubqueryDepth),
+		schemaTTL:        schemaTTL,
+		core:             rt,
+		maxUnionBranches: maxUnionBranches,
+		maxSubqueryDepth: maxSubqueryDepth,
 	}, nil
 }
 

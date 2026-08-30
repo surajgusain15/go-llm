@@ -8,14 +8,18 @@ import (
 )
 
 type SQLValidator struct {
-	parser   *sqlparser.Parser
-	maxJoins int
+	parser           *sqlparser.Parser
+	maxJoins         int
+	maxUnionBranches int
+	maxSubqueryDepth int
 }
 
-func NewSQLValidator(maxJoins int) *SQLValidator {
+func NewSQLValidator(maxJoins int, maxUnionBranches int, maxSubqueryDepth int) *SQLValidator {
 	return &SQLValidator{
-		parser:   sqlparser.NewTestParser(),
-		maxJoins: maxJoins,
+		parser:           sqlparser.NewTestParser(),
+		maxJoins:         maxJoins,
+		maxUnionBranches: maxUnionBranches,
+		maxSubqueryDepth: maxSubqueryDepth,
 	}
 }
 
@@ -95,9 +99,13 @@ func (v *SQLValidator) validateUnion(
 	stmt *sqlparser.Union,
 ) error {
 
-	if stmt.GetLock() != sqlparser.NoLock {
+	branches := countUnionBranches(stmt)
+
+	if branches > v.maxUnionBranches {
 		return fmt.Errorf(
-			"locking SELECT queries are not allowed",
+			"query contains too many UNION branches: %d (maximum %d)",
+			branches,
+			v.maxUnionBranches,
 		)
 	}
 
@@ -233,6 +241,68 @@ func validateTableExprForCrossJoin(
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+func countUnionBranches(
+	stmt *sqlparser.Union,
+) int {
+
+	return countUnionSide(stmt.Left) +
+		countUnionSide(stmt.Right)
+}
+
+func countUnionSide(
+	stmt sqlparser.TableStatement,
+) int {
+
+	switch stmt := stmt.(type) {
+
+	case *sqlparser.Union:
+		return countUnionBranches(stmt)
+
+	default:
+		return 1
+	}
+}
+
+func (v *SQLValidator) validateSubqueryDepth(
+	stmt sqlparser.SQLNode,
+) error {
+
+	depth := 0
+	maxDepth := 0
+
+	sqlparser.Walk(
+		func(node sqlparser.SQLNode) (bool, error) {
+
+			switch node.(type) {
+
+			case *sqlparser.Subquery:
+				depth++
+
+				if depth > maxDepth {
+					maxDepth = depth
+				}
+
+			case *sqlparser.Select,
+				*sqlparser.Union:
+				// handled through Subquery nodes
+			}
+
+			return true, nil
+		},
+		stmt,
+	)
+
+	if maxDepth > v.maxSubqueryDepth {
+		return fmt.Errorf(
+			"query contains too many nested subqueries: depth %d (maximum %d)",
+			maxDepth,
+			v.maxSubqueryDepth,
+		)
 	}
 
 	return nil

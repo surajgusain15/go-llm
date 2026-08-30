@@ -7,7 +7,7 @@ import (
 )
 
 func TestSQLValidator(t *testing.T) {
-	validator := NewSQLValidator(testMaxJoins)
+	validator := NewSQLValidator(testMaxJoins, testMaxUnionBranches, testMaxSubqueryDepth)
 
 	tests := []struct {
 		name      string

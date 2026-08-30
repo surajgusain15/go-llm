@@ -13,11 +13,13 @@ type Config struct {
 	Model         string
 	MySQLDSN      string
 
-	MySQLQueryTimeout   time.Duration
-	MySQLMaxRows        int
-	MySQLMaxResultBytes int
-	MySQLSchemaCacheTTL time.Duration
-	MySQLMaxJoins       int
+	MySQLQueryTimeout     time.Duration
+	MySQLMaxRows          int
+	MySQLMaxResultBytes   int
+	MySQLSchemaCacheTTL   time.Duration
+	MySQLMaxJoins         int
+	MySQLMaxUnionBranches int
+	MySQLMaxSubqueryDepth int
 }
 
 func Load() Config {
@@ -64,6 +66,16 @@ func Load() Config {
 
 		MySQLMaxJoins: getIntEnv(
 			"MYSQL_MAX_JOINS",
+			3,
+		),
+
+		MySQLMaxUnionBranches: getIntEnv(
+			"MYSQL_MAX_UNION_BRANCHES",
+			3,
+		),
+
+		MySQLMaxSubqueryDepth: getIntEnv(
+			"MYSQL_MAX_SUBQUERY_DEPTH",
 			3,
 		),
 	}
