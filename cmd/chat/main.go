@@ -54,7 +54,14 @@ func main() {
 		panic(err)
 	}
 
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			fmt.Printf(
+				"❌ database shutdown failed: %v\n",
+				err,
+			)
+		}
+	}()
 
 	if err := db.Ping(context.Background()); err != nil {
 		panic(err)

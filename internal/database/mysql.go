@@ -116,7 +116,17 @@ func (c *MySQLClient) Ping(
 	ctx context.Context,
 ) error {
 
-	if err := c.db.PingContext(ctx); err != nil {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	pingCtx, cancel := context.WithTimeout(
+		ctx,
+		c.queryTimeout,
+	)
+	defer cancel()
+
+	if err := c.db.PingContext(pingCtx); err != nil {
 		return fmt.Errorf(
 			"ping mysql: %w",
 			err,
@@ -127,7 +137,18 @@ func (c *MySQLClient) Ping(
 }
 
 func (c *MySQLClient) Close() error {
-	return c.db.Close()
+	if c == nil || c.db == nil {
+		return nil
+	}
+
+	if err := c.db.Close(); err != nil {
+		return fmt.Errorf(
+			"close mysql connection pool: %w",
+			err,
+		)
+	}
+
+	return nil
 }
 
 func (c *MySQLClient) Query(
