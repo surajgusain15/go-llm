@@ -113,11 +113,14 @@ func (c *MySQLClient) Query(
 	)
 
 	defer func() {
-
 		rows := 0
+		truncated := false
+		truncateReason := ""
 
 		if result != nil {
 			rows = result.Count
+			truncated = result.Truncated
+			truncateReason = result.TruncateReason
 		}
 
 		c.core.Emit(
@@ -125,6 +128,8 @@ func (c *MySQLClient) Query(
 				fingerprint,
 				time.Since(start),
 				rows,
+				truncated,
+				truncateReason,
 				err,
 			),
 		)
