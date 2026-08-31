@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -747,6 +748,242 @@ func TestExecutor_MaxToolConcurrency_NeverExceedsLimit(
 			"maximum concurrency was %d, limit was %d",
 			got,
 			maxConcurrency,
+		)
+	}
+}
+
+type circuitBreakerTestTool struct {
+	mu sync.Mutex
+
+	executions int
+	err        error
+}
+
+func (t *circuitBreakerTestTool) Schema() llm.ToolDefinition {
+	return llm.ToolDefinition{
+		Type: "function",
+		Function: llm.ToolFunction{
+			Name:        "circuit_breaker_test",
+			Description: "circuit breaker test tool",
+			Parameters: llm.ToolParameters{
+				Type:       "object",
+				Properties: map[string]llm.ToolProperty{},
+			},
+		},
+	}
+}
+
+func (t *circuitBreakerTestTool) Execute(
+	ctx context.Context,
+	input json.RawMessage,
+) (*llm.ToolResult, error) {
+
+	t.mu.Lock()
+	t.executions++
+	t.mu.Unlock()
+
+	if t.err != nil {
+		return nil, t.err
+	}
+
+	return &llm.ToolResult{
+		Content: "ok",
+	}, nil
+}
+
+func (t *circuitBreakerTestTool) executionCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.executions
+}
+
+func TestExecutor_CircuitBreaker(t *testing.T) {
+	testErr := errors.New("tool unavailable")
+
+	tool := &circuitBreakerTestTool{
+		err: testErr,
+	}
+
+	registry := NewRegistry()
+	registry.Register(tool)
+
+	executor := NewExecutor(
+		registry,
+		nil,
+		WithToolCircuitBreaker(
+			CircuitBreakerPolicy{
+				FailureThreshold: 2,
+				OpenTimeout:      time.Minute,
+			},
+		),
+	)
+
+	for i := 0; i < 2; i++ {
+		_, err := executor.Execute(
+			context.Background(),
+			"circuit_breaker_test",
+			json.RawMessage(`{}`),
+		)
+
+		if !errors.Is(err, testErr) {
+			t.Fatalf(
+				"call %d: expected %v, got %v",
+				i+1,
+				testErr,
+				err,
+			)
+		}
+	}
+
+	_, err := executor.Execute(
+		context.Background(),
+		"circuit_breaker_test",
+		json.RawMessage(`{}`),
+	)
+
+	if !errors.Is(err, ErrCircuitOpen) {
+		t.Fatalf(
+			"expected ErrCircuitOpen, got %v",
+			err,
+		)
+	}
+
+	if got := tool.executionCount(); got != 2 {
+		t.Fatalf(
+			"expected exactly 2 underlying executions, got %d",
+			got,
+		)
+	}
+}
+
+type countingTool struct {
+	Tool
+	count *atomic.Int32
+}
+
+func (t *countingTool) Execute(
+	ctx context.Context,
+	input json.RawMessage,
+) (*llm.ToolResult, error) {
+	t.count.Add(1)
+
+	return t.Tool.Execute(
+		ctx,
+		input,
+	)
+}
+
+func TestExecutor_CircuitBreakerWithRetry(t *testing.T) {
+	testErr := errors.New("tool unavailable")
+
+	var executions atomic.Int32
+
+	tool := &circuitBreakerTestTool{
+		err: testErr,
+	}
+
+	// Keep an explicit counter so we can verify how many times
+	// the underlying tool actually executed.
+	toolWithCounter := &countingTool{
+		Tool:  tool,
+		count: &executions,
+	}
+
+	registry := NewRegistry()
+	registry.Register(toolWithCounter)
+
+	executor := NewExecutor(
+		registry,
+		nil,
+		WithToolCircuitBreaker(
+			CircuitBreakerPolicy{
+				FailureThreshold: 2,
+				OpenTimeout:      time.Minute,
+			},
+		),
+		WithToolRetry(
+			ToolRetryPolicy{
+				MaxAttempts: 2,
+				ShouldRetry: func(err error) bool {
+					return errors.Is(err, testErr)
+				},
+				Backoff: func(attempt int) time.Duration {
+					return 0
+				},
+			},
+		),
+	)
+
+	// First Executor invocation:
+	//   attempt 1 -> failure
+	//   attempt 2 -> failure
+	//   final error -> breaker records one failure.
+	_, err := executor.Execute(
+		context.Background(),
+		"circuit_breaker_test",
+		json.RawMessage(`{}`),
+	)
+
+	if !errors.Is(err, testErr) {
+		t.Fatalf(
+			"first invocation: expected %v, got %v",
+			testErr,
+			err,
+		)
+	}
+
+	if got := executions.Load(); got != 2 {
+		t.Fatalf(
+			"expected 2 tool executions after first invocation, got %d",
+			got,
+		)
+	}
+
+	// Second Executor invocation:
+	//   attempt 1 -> failure
+	//   attempt 2 -> failure
+	//   final error -> breaker reaches threshold and opens.
+	_, err = executor.Execute(
+		context.Background(),
+		"circuit_breaker_test",
+		json.RawMessage(`{}`),
+	)
+
+	if !errors.Is(err, testErr) {
+		t.Fatalf(
+			"second invocation: expected %v, got %v",
+			testErr,
+			err,
+		)
+	}
+
+	if got := executions.Load(); got != 4 {
+		t.Fatalf(
+			"expected 4 tool executions after second invocation, got %d",
+			got,
+		)
+	}
+
+	// Third invocation must be rejected by the breaker.
+	_, err = executor.Execute(
+		context.Background(),
+		"circuit_breaker_test",
+		json.RawMessage(`{}`),
+	)
+
+	if !errors.Is(err, ErrCircuitOpen) {
+		t.Fatalf(
+			"third invocation: expected ErrCircuitOpen, got %v",
+			err,
+		)
+	}
+
+	// The breaker must prevent both retry attempts from happening.
+	if got := executions.Load(); got != 4 {
+		t.Fatalf(
+			"expected no additional tool executions after circuit opened, got %d",
+			got,
 		)
 	}
 }
