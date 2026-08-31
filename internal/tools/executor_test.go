@@ -988,20 +988,46 @@ func TestExecutor_CircuitBreakerWithRetry(t *testing.T) {
 	}
 }
 
+type countingTestTool struct {
+	count *atomic.Int32
+}
+
+func (t *countingTestTool) Schema() llm.ToolDefinition {
+	return llm.ToolDefinition{
+		Type: "function",
+		Function: llm.ToolFunction{
+			Name:        "rate_limit_test",
+			Description: "test tool for rate limiting",
+			Parameters: llm.ToolParameters{
+				Type:       "object",
+				Required:   nil,
+				Properties: map[string]llm.ToolProperty{},
+			},
+		},
+	}
+}
+
+func (t *countingTestTool) Execute(
+	ctx context.Context,
+	input json.RawMessage,
+) (*llm.ToolResult, error) {
+
+	t.count.Add(1)
+
+	return &llm.ToolResult{
+		Content: "ok",
+	}, nil
+}
+
 func TestExecutor_RateLimit(t *testing.T) {
 	var executions atomic.Int32
 
-	tool := &circuitBreakerTestTool{
-		err: nil,
-	}
-
-	counting := &countingTool{
-		Tool:  tool,
+	tool := &countingTestTool{
 		count: &executions,
 	}
 
 	registry := NewRegistry()
-	registry.Register(counting)
+	registry.Register(tool)
 
 	executor := NewExecutor(
 		registry,
@@ -1014,29 +1040,39 @@ func TestExecutor_RateLimit(t *testing.T) {
 		),
 	)
 
+	input := json.RawMessage(`{}`)
+
 	_, err := executor.Execute(
 		context.Background(),
-		"circuit_breaker_test",
-		json.RawMessage(`{}`),
+		"rate_limit_test",
+		input,
 	)
 
 	if err != nil {
-		t.Fatalf("first execution: %v", err)
+		t.Fatalf(
+			"first execution: %v",
+			err,
+		)
 	}
 
 	start := time.Now()
 
 	_, err = executor.Execute(
 		context.Background(),
-		"circuit_breaker_test",
-		json.RawMessage(`{}`),
+		"rate_limit_test",
+		input,
 	)
 
 	if err != nil {
-		t.Fatalf("second execution: %v", err)
+		t.Fatalf(
+			"second execution: %v",
+			err,
+		)
 	}
 
-	if elapsed := time.Since(start); elapsed < 30*time.Millisecond {
+	elapsed := time.Since(start)
+
+	if elapsed < 30*time.Millisecond {
 		t.Fatalf(
 			"expected rate limiting delay, got %v",
 			elapsed,

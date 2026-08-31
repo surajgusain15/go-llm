@@ -9,10 +9,25 @@ import (
 )
 
 type RateLimitPolicy struct {
+	// Maximum number of tokens that can accumulate
+	// for the global limiter.
+	Burst int
+
+	// Interval between tokens for the global limiter.
+	Rate time.Duration
+
+	// Optional per-tool overrides.
+	//
+	// If a tool is present here, its limiter is used
+	// instead of the global limiter.
+	PerTool map[string]RateLimitConfig
+}
+
+type RateLimitConfig struct {
 	// Maximum number of tokens that can accumulate.
 	Burst int
 
-	// Tokens added per second.
+	// Interval between tokens.
 	Rate time.Duration
 }
 
@@ -28,28 +43,67 @@ type rateLimiter struct {
 	last time.Time
 }
 
+func newRateLimiter(
+	burst int,
+	rate time.Duration,
+) *rateLimiter {
+
+	if burst <= 0 || rate <= 0 {
+		return nil
+	}
+
+	return &rateLimiter{
+		burst:         burst,
+		tokens:        float64(burst),
+		ratePerSecond: float64(time.Second) / float64(rate),
+		last:          time.Now(),
+	}
+}
+
 func ToolRateLimit(
 	policy RateLimitPolicy,
 ) ToolMiddleware {
 
-	if policy.Burst <= 0 || policy.Rate <= 0 {
-		return func(next Handler) Handler {
-			return next
+	globalLimiter := newRateLimiter(
+		policy.Burst,
+		policy.Rate,
+	)
+
+	perToolLimiters := make(
+		map[string]*rateLimiter,
+		len(policy.PerTool),
+	)
+
+	for name, config := range policy.PerTool {
+		limiter := newRateLimiter(
+			config.Burst,
+			config.Rate,
+		)
+
+		if limiter != nil {
+			perToolLimiters[name] = limiter
 		}
 	}
 
-	limiter := &rateLimiter{
-		burst:         policy.Burst,
-		tokens:        float64(policy.Burst),
-		ratePerSecond: float64(time.Second) / float64(policy.Rate),
-		last:          time.Now(),
-	}
-
 	return func(next Handler) Handler {
+
 		return func(
 			ctx context.Context,
 			invocation ToolInvocation,
 		) (*llm.ToolResult, error) {
+
+			limiter := globalLimiter
+
+			if toolLimiter, ok := perToolLimiters[invocation.Name]; ok {
+				limiter = toolLimiter
+			}
+
+			if limiter == nil {
+				return next(
+					ctx,
+					invocation,
+				)
+			}
 
 			if err := limiter.wait(ctx); err != nil {
 				return nil, err
@@ -92,7 +146,8 @@ func (r *rateLimiter) wait(
 		needed := 1 - r.tokens
 
 		wait := time.Duration(
-			needed / r.ratePerSecond * float64(time.Second),
+			needed / r.ratePerSecond *
+				float64(time.Second),
 		)
 
 		if wait <= 0 {
