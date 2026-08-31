@@ -9,7 +9,10 @@ import (
 	"go-llm/internal/tools/builtin"
 )
 
-func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
+func NewDefaultExecutor(
+	rt *core.Core,
+	db database.Client,
+) *Executor {
 
 	registry := NewRegistry()
 
@@ -36,7 +39,9 @@ func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
 	executor := NewExecutor(
 		registry,
 		rt,
+
 		WithToolObservability(),
+
 		WithToolRetry(
 			ToolRetryPolicy{
 				MaxAttempts: 3,

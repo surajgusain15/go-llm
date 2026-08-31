@@ -1089,37 +1089,6 @@ func TestExecutor_RateLimit(t *testing.T) {
 	}
 }
 
-type toolRecordingObserver struct {
-	mu     sync.Mutex
-	events []events.Event
-}
-
-func (o *toolRecordingObserver) OnEvent(
-	event events.Event,
-) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
-	o.events = append(
-		o.events,
-		event,
-	)
-}
-
-func (o *toolRecordingObserver) Events() []events.Event {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
-	result := make(
-		[]events.Event,
-		len(o.events),
-	)
-
-	copy(result, o.events)
-
-	return result
-}
-
 func TestExecutor_ObservabilityEmitsSingleToolLifecycle(
 	t *testing.T,
 ) {
@@ -1282,6 +1251,131 @@ func TestExecutor_MiddlewareOrder(
 		t.Fatalf(
 			"unexpected execution order: %v",
 			got,
+		)
+	}
+}
+
+type toolRecordingObserver struct {
+	mu     sync.Mutex
+	events []events.Event
+}
+
+func (o *toolRecordingObserver) OnEvent(event events.Event) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.events = append(o.events, event)
+}
+
+func (o *toolRecordingObserver) Events() []events.Event {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	return append(
+		[]events.Event(nil),
+		o.events...,
+	)
+}
+
+func TestExecutor_ObservabilityWithRetryEmitsSingleLifecycle(
+	t *testing.T,
+) {
+	observer := &toolRecordingObserver{}
+	rt := core.New(observer)
+
+	firstStarted := make(chan struct{})
+	secondStarted := make(chan struct{})
+
+	registry := NewRegistry()
+
+	registry.Register(
+		&errorThenSuccessTestTool{
+			name:          "test",
+			firstStarted:  firstStarted,
+			secondStarted: secondStarted,
+		},
+	)
+
+	executor := NewExecutor(
+		registry,
+		rt,
+
+		WithToolObservability(),
+
+		WithToolRetry(
+			ToolRetryPolicy{
+				MaxAttempts: 2,
+
+				ShouldRetry: func(err error) bool {
+					return err != nil &&
+						err.Error() == "intentional test failure"
+				},
+			},
+		),
+	)
+
+	_, err := executor.Execute(
+		context.Background(),
+		"test",
+		json.RawMessage(`{}`),
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"expected retry to succeed, got %v",
+			err,
+		)
+	}
+
+	select {
+	case <-firstStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first execution did not start")
+	}
+
+	select {
+	case <-secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("second execution did not start")
+	}
+
+	recorded := observer.Events()
+
+	var started int
+	var finished int
+	var retries int
+
+	for _, event := range recorded {
+		switch event.Type() {
+		case events.EventToolStarted:
+			started++
+
+		case events.EventToolFinished:
+			finished++
+
+		case events.EventToolRetry:
+			retries++
+		}
+	}
+
+	if started != 1 {
+		t.Fatalf(
+			"expected 1 tool.started event, got %d",
+			started,
+		)
+	}
+
+	if finished != 1 {
+		t.Fatalf(
+			"expected 1 tool.finished event, got %d",
+			finished,
+		)
+	}
+
+	if retries != 1 {
+		t.Fatalf(
+			"expected 1 tool.retry event, got %d",
+			retries,
 		)
 	}
 }
