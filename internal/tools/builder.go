@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"time"
 
 	"go-llm/internal/core"
@@ -39,11 +40,25 @@ func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
 		WithToolRetry(
 			ToolRetryPolicy{
 				MaxAttempts: 3,
-				ShouldRetry: isTransientToolError,
-				Backoff: ExponentialBackoff(
+
+				ShouldRetry: func(err error) bool {
+					return errors.Is(err, ErrToolUnavailable) ||
+						errors.Is(err, ErrToolRateLimited) ||
+						errors.Is(err, ErrToolTemporary)
+				},
+
+				Backoff: ExponentialBackoffWithJitter(
 					100*time.Millisecond,
-					2*time.Second,
+					5*time.Second,
+					50*time.Millisecond,
 				),
+
+				Budget: &ToolRetryBudgetPolicy{
+					PerTool: map[string]int{
+						"database_query": 5,
+					},
+					Global: 20,
+				},
 			},
 		),
 

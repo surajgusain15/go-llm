@@ -1001,3 +1001,466 @@ func TestToolRetry_DoesNotEmitRetryEventAfterFinalAttempt(
 		)
 	}
 }
+
+func TestToolRetryBudget_LimitsPerToolRetries(t *testing.T) {
+	testErr := errors.New("temporary failure")
+
+	firstBackoffEntered := make(chan struct{})
+	releaseFirstBackoff := make(chan struct{})
+	secondBackoffEntered := make(chan struct{})
+
+	var mu sync.Mutex
+	backoffCalls := 0
+
+	backoff := func(attempt int) time.Duration {
+		mu.Lock()
+		backoffCalls++
+		call := backoffCalls
+		mu.Unlock()
+
+		if call == 1 {
+			close(firstBackoffEntered)
+
+			select {
+			case <-releaseFirstBackoff:
+			case <-time.After(time.Second):
+				t.Fatal("first backoff was not released")
+			}
+		}
+
+		if call == 2 {
+			close(secondBackoffEntered)
+		}
+
+		return 0
+	}
+
+	handler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+			return nil, testErr
+		},
+	)
+
+	wrapped := ToolRetry(
+		ToolRetryPolicy{
+			MaxAttempts: 2,
+
+			ShouldRetry: func(err error) bool {
+				return errors.Is(err, testErr)
+			},
+
+			Backoff: backoff,
+
+			Budget: &ToolRetryBudgetPolicy{
+				PerTool: map[string]int{
+					"test": 1,
+				},
+			},
+		},
+	)(handler)
+
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := wrapped(
+			context.Background(),
+			ToolInvocation{
+				Name: "test",
+			},
+		)
+
+		firstDone <- err
+	}()
+
+	select {
+	case <-firstBackoffEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first retry did not enter backoff")
+	}
+
+	go func() {
+		_, err := wrapped(
+			context.Background(),
+			ToolInvocation{
+				Name: "test",
+			},
+		)
+
+		secondDone <- err
+	}()
+
+	// The second invocation must wait for the per-tool retry budget.
+	select {
+	case <-secondBackoffEntered:
+		t.Fatal(
+			"second retry entered backoff while per-tool budget was occupied",
+		)
+
+	case <-time.After(50 * time.Millisecond):
+		// Expected.
+	}
+
+	close(releaseFirstBackoff)
+
+	select {
+	case <-secondBackoffEntered:
+		// Expected.
+	case <-time.After(time.Second):
+		t.Fatal("second retry did not acquire the per-tool budget")
+	}
+
+	select {
+	case err := <-firstDone:
+		if !errors.Is(err, testErr) {
+			t.Fatalf(
+				"first invocation: expected test error, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("first invocation did not complete")
+	}
+
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, testErr) {
+			t.Fatalf(
+				"second invocation: expected test error, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("second invocation did not complete")
+	}
+}
+
+func TestToolRetryBudget_LimitsGlobalRetries(t *testing.T) {
+	testErr := errors.New("temporary failure")
+
+	firstBackoffEntered := make(chan struct{})
+	releaseFirstBackoff := make(chan struct{})
+	secondBackoffEntered := make(chan struct{})
+
+	var mu sync.Mutex
+	backoffCalls := 0
+
+	backoff := func(attempt int) time.Duration {
+		mu.Lock()
+		backoffCalls++
+		call := backoffCalls
+		mu.Unlock()
+
+		if call == 1 {
+			close(firstBackoffEntered)
+
+			select {
+			case <-releaseFirstBackoff:
+			case <-time.After(time.Second):
+				t.Fatal("first backoff was not released")
+			}
+		}
+
+		if call == 2 {
+			close(secondBackoffEntered)
+		}
+
+		return 0
+	}
+
+	handler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+			return nil, testErr
+		},
+	)
+
+	wrapped := ToolRetry(
+		ToolRetryPolicy{
+			MaxAttempts: 2,
+
+			ShouldRetry: func(err error) bool {
+				return errors.Is(err, testErr)
+			},
+
+			Backoff: backoff,
+
+			Budget: &ToolRetryBudgetPolicy{
+				Global: 1,
+			},
+		},
+	)(handler)
+
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := wrapped(
+			context.Background(),
+			ToolInvocation{
+				Name: "tool_a",
+			},
+		)
+
+		firstDone <- err
+	}()
+
+	select {
+	case <-firstBackoffEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first retry did not enter backoff")
+	}
+
+	go func() {
+		_, err := wrapped(
+			context.Background(),
+			ToolInvocation{
+				Name: "tool_b",
+			},
+		)
+
+		secondDone <- err
+	}()
+
+	// The second invocation must wait for the global retry budget.
+	select {
+	case <-secondBackoffEntered:
+		t.Fatal(
+			"second retry entered backoff while global budget was occupied",
+		)
+
+	case <-time.After(50 * time.Millisecond):
+		// Expected.
+	}
+
+	close(releaseFirstBackoff)
+
+	select {
+	case <-secondBackoffEntered:
+		// Expected.
+	case <-time.After(time.Second):
+		t.Fatal("second retry did not acquire the global budget")
+	}
+
+	select {
+	case err := <-firstDone:
+		if !errors.Is(err, testErr) {
+			t.Fatalf(
+				"first invocation: expected test error, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("first invocation did not complete")
+	}
+
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, testErr) {
+			t.Fatalf(
+				"second invocation: expected test error, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("second invocation did not complete")
+	}
+}
+
+func TestToolRetryBudget_CancelWhileWaiting(t *testing.T) {
+	testErr := errors.New("temporary failure")
+
+	firstBackoffEntered := make(chan struct{})
+	releaseFirstBackoff := make(chan struct{})
+	secondBackoffEntered := make(chan struct{})
+
+	var mu sync.Mutex
+	backoffCalls := 0
+
+	backoff := func(attempt int) time.Duration {
+		mu.Lock()
+		backoffCalls++
+		call := backoffCalls
+		mu.Unlock()
+
+		switch call {
+		case 1:
+			close(firstBackoffEntered)
+
+			select {
+			case <-releaseFirstBackoff:
+			case <-time.After(time.Second):
+				t.Fatal("first backoff was not released")
+			}
+
+		case 2:
+			close(secondBackoffEntered)
+		}
+
+		return 0
+	}
+
+	handler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+			return nil, testErr
+		},
+	)
+
+	wrapped := ToolRetry(
+		ToolRetryPolicy{
+			MaxAttempts: 2,
+
+			ShouldRetry: func(err error) bool {
+				return errors.Is(err, testErr)
+			},
+
+			Backoff: backoff,
+
+			Budget: &ToolRetryBudgetPolicy{
+				Global: 1,
+			},
+		},
+	)(handler)
+
+	firstDone := make(chan error, 1)
+
+	go func() {
+		_, err := wrapped(
+			context.Background(),
+			ToolInvocation{
+				Name: "tool_a",
+			},
+		)
+
+		firstDone <- err
+	}()
+
+	select {
+	case <-firstBackoffEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first retry did not enter backoff")
+	}
+
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
+	defer cancel()
+
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := wrapped(
+			ctx,
+			ToolInvocation{
+				Name: "tool_b",
+			},
+		)
+
+		secondDone <- err
+	}()
+
+	// Give the second invocation a chance to reach the budget.
+	time.Sleep(20 * time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf(
+				"expected context.Canceled, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("cancelled retry did not terminate")
+	}
+
+	// Release the first retry.
+	close(releaseFirstBackoff)
+
+	select {
+	case err := <-firstDone:
+		if !errors.Is(err, testErr) {
+			t.Fatalf(
+				"first invocation: expected test error, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("first invocation did not complete")
+	}
+
+	// Verify the cancelled waiter did not leak the global budget.
+	thirdBackoffEntered := make(chan struct{})
+
+	thirdBackoff := func(attempt int) time.Duration {
+		close(thirdBackoffEntered)
+		return 0
+	}
+
+	thirdWrapped := ToolRetry(
+		ToolRetryPolicy{
+			MaxAttempts: 2,
+
+			ShouldRetry: func(err error) bool {
+				return errors.Is(err, testErr)
+			},
+
+			Backoff: thirdBackoff,
+
+			Budget: &ToolRetryBudgetPolicy{
+				Global: 1,
+			},
+		},
+	)(handler)
+
+	thirdDone := make(chan error, 1)
+
+	go func() {
+		_, err := thirdWrapped(
+			context.Background(),
+			ToolInvocation{
+				Name: "tool_c",
+			},
+		)
+
+		thirdDone <- err
+	}()
+
+	select {
+	case <-thirdBackoffEntered:
+		// Expected: budget was released correctly.
+	case <-time.After(time.Second):
+		t.Fatal(
+			"retry budget remained occupied after cancelled waiter",
+		)
+	}
+
+	select {
+	case err := <-thirdDone:
+		if !errors.Is(err, testErr) {
+			t.Fatalf(
+				"third invocation: expected test error, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("third invocation did not complete")
+	}
+}

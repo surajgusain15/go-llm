@@ -909,7 +909,7 @@ func TestExecutor_CircuitBreakerWithRetry(t *testing.T) {
 					return errors.Is(err, testErr)
 				},
 				Backoff: func(attempt int) time.Duration {
-					return 0
+					return 200 * time.Millisecond
 				},
 			},
 		),

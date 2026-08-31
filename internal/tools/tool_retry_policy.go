@@ -15,11 +15,21 @@ type ToolRetryPolicy struct {
 	ShouldRetry func(error) bool
 
 	Backoff BackoffPolicy
+
+	Budget *ToolRetryBudgetPolicy
 }
 
 func ToolRetry(
 	policy ToolRetryPolicy,
 ) ToolMiddleware {
+
+	var budget *toolRetryBudget
+
+	if policy.Budget != nil {
+		budget = newToolRetryBudget(
+			*policy.Budget,
+		)
+	}
 
 	return func(next Handler) Handler {
 
@@ -28,11 +38,7 @@ func ToolRetry(
 			invocation ToolInvocation,
 		) (*llm.ToolResult, error) {
 
-			maxAttempts := policy.MaxAttempts
-
-			if maxAttempts < 1 {
-				maxAttempts = 1
-			}
+			maxAttempts := max(policy.MaxAttempts, 1)
 
 			for attempt := 1; attempt <= maxAttempts; attempt++ {
 
@@ -59,42 +65,64 @@ func ToolRetry(
 					return nil, err
 				}
 
+				var releaseBudget func()
+
+				if budget != nil {
+					var acquireErr error
+
+					releaseBudget, acquireErr = budget.acquire(
+						ctx,
+						invocation.Name,
+					)
+
+					if acquireErr != nil {
+						return nil, acquireErr
+					}
+				}
+
+				delay := time.Duration(0)
+
 				if policy.Backoff != nil {
+					delay = policy.Backoff(attempt)
+				}
 
-					delay := policy.Backoff(attempt)
+				middlewareCtx := toolMiddlewareContext(ctx)
 
-					middlewareCtx := toolMiddlewareContext(ctx)
+				if middlewareCtx.Core != nil {
+					middlewareCtx.Core.Emit(
+						events.NewToolRetry(
+							invocation.Name,
+							attempt,
+							delay,
+							err,
+						),
+					)
+				}
 
-					if middlewareCtx.Core != nil {
-						middlewareCtx.Core.Emit(
-							events.NewToolRetry(
-								invocation.Name,
-								attempt,
-								delay,
-								err,
-							),
-						)
-					}
+				if delay > 0 {
+					timer := time.NewTimer(delay)
 
-					if delay > 0 {
+					select {
+					case <-timer.C:
 
-						timer := time.NewTimer(delay)
-
-						select {
-						case <-timer.C:
-
-						case <-ctx.Done():
-
-							if !timer.Stop() {
-								select {
-								case <-timer.C:
-								default:
-								}
+					case <-ctx.Done():
+						if !timer.Stop() {
+							select {
+							case <-timer.C:
+							default:
 							}
-
-							return nil, ctx.Err()
 						}
+
+						if releaseBudget != nil {
+							releaseBudget()
+						}
+
+						return nil, ctx.Err()
 					}
+				}
+
+				if releaseBudget != nil {
+					releaseBudget()
 				}
 			}
 
