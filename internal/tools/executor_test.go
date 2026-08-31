@@ -987,3 +987,66 @@ func TestExecutor_CircuitBreakerWithRetry(t *testing.T) {
 		)
 	}
 }
+
+func TestExecutor_RateLimit(t *testing.T) {
+	var executions atomic.Int32
+
+	tool := &circuitBreakerTestTool{
+		err: nil,
+	}
+
+	counting := &countingTool{
+		Tool:  tool,
+		count: &executions,
+	}
+
+	registry := NewRegistry()
+	registry.Register(counting)
+
+	executor := NewExecutor(
+		registry,
+		nil,
+		WithToolRateLimit(
+			RateLimitPolicy{
+				Burst: 1,
+				Rate:  50 * time.Millisecond,
+			},
+		),
+	)
+
+	_, err := executor.Execute(
+		context.Background(),
+		"circuit_breaker_test",
+		json.RawMessage(`{}`),
+	)
+
+	if err != nil {
+		t.Fatalf("first execution: %v", err)
+	}
+
+	start := time.Now()
+
+	_, err = executor.Execute(
+		context.Background(),
+		"circuit_breaker_test",
+		json.RawMessage(`{}`),
+	)
+
+	if err != nil {
+		t.Fatalf("second execution: %v", err)
+	}
+
+	if elapsed := time.Since(start); elapsed < 30*time.Millisecond {
+		t.Fatalf(
+			"expected rate limiting delay, got %v",
+			elapsed,
+		)
+	}
+
+	if got := executions.Load(); got != 2 {
+		t.Fatalf(
+			"expected 2 executions, got %d",
+			got,
+		)
+	}
+}
