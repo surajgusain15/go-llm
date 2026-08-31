@@ -842,9 +842,9 @@ func TestExecutor_CircuitBreaker(t *testing.T) {
 		json.RawMessage(`{}`),
 	)
 
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, ErrToolCircuitOpen) {
 		t.Fatalf(
-			"expected ErrCircuitOpen, got %v",
+			"expected ErrToolCircuitOpen, got %v",
 			err,
 		)
 	}
@@ -972,9 +972,9 @@ func TestExecutor_CircuitBreakerWithRetry(t *testing.T) {
 		json.RawMessage(`{}`),
 	)
 
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, ErrToolCircuitOpen) {
 		t.Fatalf(
-			"third invocation: expected ErrCircuitOpen, got %v",
+			"third invocation: expected ErrToolCircuitOpen, got %v",
 			err,
 		)
 	}

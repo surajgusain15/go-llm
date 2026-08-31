@@ -3,14 +3,6 @@ package tools
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
-)
-
-var ErrNotInteractive = errors.New(
-	"tool is not interactive",
-)
-var ErrToolNotFound = errors.New(
-	"tool not found",
 )
 
 type InteractiveTool interface {
@@ -32,7 +24,7 @@ func (e *Executor) InteractiveTool(
 
 	interactiveTool, ok := tool.(InteractiveTool)
 	if !ok {
-		return nil, ErrNotInteractive
+		return nil, ErrToolNotInteractive
 	}
 
 	return interactiveTool, nil

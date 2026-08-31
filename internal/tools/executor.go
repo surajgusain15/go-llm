@@ -125,7 +125,7 @@ func (e *Executor) CollectInput(
 
 	interactiveTool, ok := tool.(InteractiveTool)
 	if !ok {
-		return nil, ErrNotInteractive
+		return nil, ErrToolNotInteractive
 	}
 
 	return interactiveTool.CollectInput(reader)
@@ -176,8 +176,13 @@ func (e *Executor) Execute(
 		handler = middleware(handler)
 	}
 
-	result, err := handler(
+	toolCtx := withToolMiddlewareContext(
 		ctx,
+		e.core,
+	)
+
+	result, err := handler(
+		toolCtx,
 		ToolInvocation{
 			Name:  name,
 			Input: input,

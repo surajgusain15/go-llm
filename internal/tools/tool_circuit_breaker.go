@@ -22,8 +22,6 @@ const (
 	circuitHalfOpen
 )
 
-var ErrCircuitOpen = errors.New("tool circuit breaker is open")
-
 type circuitBreaker struct {
 	mu sync.Mutex
 
@@ -92,13 +90,13 @@ func (cb *circuitBreaker) beforeCall() error {
 		}
 
 		if time.Since(cb.openedAt) < cb.policy.OpenTimeout {
-			return ErrCircuitOpen
+			return ErrToolCircuitOpen
 		}
 
 		cb.state = circuitHalfOpen
 
 		if cb.probeInFlight {
-			return ErrCircuitOpen
+			return ErrToolCircuitOpen
 		}
 
 		cb.probeInFlight = true
@@ -107,7 +105,7 @@ func (cb *circuitBreaker) beforeCall() error {
 
 	case circuitHalfOpen:
 		if cb.probeInFlight {
-			return ErrCircuitOpen
+			return ErrToolCircuitOpen
 		}
 
 		cb.probeInFlight = true
@@ -115,7 +113,7 @@ func (cb *circuitBreaker) beforeCall() error {
 		return nil
 
 	default:
-		return ErrCircuitOpen
+		return ErrToolCircuitOpen
 	}
 }
 

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -195,8 +196,11 @@ func TestToolBulkhead_IsolatesTools(t *testing.T) {
 	}
 }
 
-func TestToolBulkhead_CancelWhileWaiting(t *testing.T) {
-	started := make(chan struct{})
+func TestToolBulkhead_CancelWhileWaiting(
+	t *testing.T,
+) {
+	var executions atomic.Int32
+
 	release := make(chan struct{})
 
 	handler := Handler(
@@ -205,13 +209,15 @@ func TestToolBulkhead_CancelWhileWaiting(t *testing.T) {
 			invocation ToolInvocation,
 		) (*llm.ToolResult, error) {
 
-			close(started)
+			executions.Add(1)
 
-			<-release
+			select {
+			case <-release:
+				return &llm.ToolResult{}, nil
 
-			return &llm.ToolResult{
-				Content: "ok",
-			}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		},
 	)
 
@@ -223,58 +229,84 @@ func TestToolBulkhead_CancelWhileWaiting(t *testing.T) {
 		},
 	)(handler)
 
-	firstDone := make(chan struct{})
+	firstDone := make(chan error, 1)
 
 	go func() {
-		defer close(firstDone)
-
-		_, _ = wrapped(
+		_, err := wrapped(
 			context.Background(),
 			ToolInvocation{Name: "test"},
 		)
+
+		firstDone <- err
 	}()
 
-	select {
-	case <-started:
+	// Wait until first execution has acquired the slot.
+	deadline := time.After(time.Second)
 
-	case <-time.After(time.Second):
-		t.Fatal("first execution did not start")
+	for executions.Load() != 1 {
+		select {
+		case <-deadline:
+			t.Fatal("first tool did not start")
+		default:
+			runtime.Gosched()
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(
+	ctx, cancel := context.WithCancel(
 		context.Background(),
-		20*time.Millisecond,
-	)
-	defer cancel()
-
-	start := time.Now()
-
-	_, err := wrapped(
-		ctx,
-		ToolInvocation{Name: "test"},
 	)
 
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf(
-			"expected context deadline exceeded, got %v",
-			err,
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := wrapped(
+			ctx,
+			ToolInvocation{Name: "test"},
+		)
+
+		secondDone <- err
+	}()
+
+	// Let the second invocation reach the bulkhead.
+	time.Sleep(20 * time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf(
+				"expected context.Canceled, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal(
+			"waiting invocation did not terminate after cancellation",
 		)
 	}
 
-	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+	if got := executions.Load(); got != 1 {
 		t.Fatalf(
-			"bulkhead ignored cancellation: %v",
-			elapsed,
+			"expected exactly 1 tool execution, got %d",
+			got,
 		)
 	}
 
 	close(release)
 
 	select {
-	case <-firstDone:
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf(
+				"first tool: unexpected error: %v",
+				err,
+			)
+		}
 
 	case <-time.After(time.Second):
-		t.Fatal("first execution did not finish")
+		t.Fatal("first tool did not finish")
 	}
 }
 
@@ -403,4 +435,200 @@ func TestToolBulkhead_IsConcurrencySafe(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestToolBulkhead_DifferentToolsHaveIndependentLimits(
+	t *testing.T,
+) {
+	firstStarted := make(chan struct{})
+	secondStarted := make(chan struct{})
+
+	releaseFirst := make(chan struct{})
+
+	firstHandler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+
+			close(firstStarted)
+
+			select {
+			case <-releaseFirst:
+				return &llm.ToolResult{}, nil
+
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+	)
+
+	secondHandler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+
+			close(secondStarted)
+
+			return &llm.ToolResult{}, nil
+		},
+	)
+
+	middleware := ToolBulkhead(
+		ToolBulkheadPolicy{
+			PerTool: map[string]int{
+				"first":  1,
+				"second": 1,
+			},
+		},
+	)
+
+	firstWrapped := middleware(firstHandler)
+	secondWrapped := middleware(secondHandler)
+
+	firstDone := make(chan error, 1)
+
+	go func() {
+		_, err := firstWrapped(
+			context.Background(),
+			ToolInvocation{
+				Name: "first",
+			},
+		)
+
+		firstDone <- err
+	}()
+
+	select {
+	case <-firstStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first tool did not start")
+	}
+
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := secondWrapped(
+			context.Background(),
+			ToolInvocation{
+				Name: "second",
+			},
+		)
+
+		secondDone <- err
+	}()
+
+	select {
+	case <-secondStarted:
+		// Correct: second has its own bulkhead.
+	case <-time.After(time.Second):
+		t.Fatal(
+			"second tool was blocked by first tool's bulkhead",
+		)
+	}
+
+	close(releaseFirst)
+
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf(
+				"first tool: unexpected error: %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("first tool did not finish")
+	}
+
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf(
+				"second tool: unexpected error: %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("second tool did not finish")
+	}
+}
+
+func TestToolBulkhead_SlotReleasedAfterError(
+	t *testing.T,
+) {
+	var executions atomic.Int32
+
+	testErr := errors.New("tool failure")
+
+	handler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+
+			executions.Add(1)
+
+			return nil, testErr
+		},
+	)
+
+	wrapped := ToolBulkhead(
+		ToolBulkheadPolicy{
+			PerTool: map[string]int{
+				"test": 1,
+			},
+		},
+	)(handler)
+
+	// First execution fails while holding the only slot.
+	_, err := wrapped(
+		context.Background(),
+		ToolInvocation{Name: "test"},
+	)
+
+	if !errors.Is(err, testErr) {
+		t.Fatalf(
+			"expected original tool error, got %v",
+			err,
+		)
+	}
+
+	// The slot must have been released even though
+	// the handler returned an error.
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := wrapped(
+			context.Background(),
+			ToolInvocation{Name: "test"},
+		)
+
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, testErr) {
+			t.Fatalf(
+				"second invocation: expected original tool error, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal(
+			"second invocation blocked; bulkhead slot was leaked",
+		)
+	}
+
+	if got := executions.Load(); got != 2 {
+		t.Fatalf(
+			"expected 2 executions, got %d",
+			got,
+		)
+	}
 }

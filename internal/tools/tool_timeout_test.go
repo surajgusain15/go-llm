@@ -9,6 +9,54 @@ import (
 	"go-llm/internal/llm"
 )
 
+func TestToolTimeouts_DoesNotClassifyParentDeadlineAsToolTimeout(
+	t *testing.T,
+) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		50*time.Millisecond,
+	)
+	defer cancel()
+
+	handler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+
+			<-ctx.Done()
+
+			return nil, ctx.Err()
+		},
+	)
+
+	wrapped := ToolTimeouts(
+		5*time.Second,
+		nil,
+	)(handler)
+
+	_, err := wrapped(
+		ctx,
+		ToolInvocation{
+			Name: "test",
+		},
+	)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf(
+			"expected context.DeadlineExceeded, got %v",
+			err,
+		)
+	}
+
+	if errors.Is(err, ErrToolTimeout) {
+		t.Fatalf(
+			"parent deadline must not be classified as ErrToolTimeout: %v",
+			err,
+		)
+	}
+}
+
 func TestToolTimeout_ParentCancellation(
 	t *testing.T,
 ) {

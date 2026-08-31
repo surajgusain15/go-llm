@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go-llm/internal/llm"
@@ -40,7 +41,43 @@ func ToolTimeouts(
 			)
 			defer cancel()
 
-			return next(toolCtx, invocation)
+			timeoutFired := make(chan struct{})
+
+			timer := time.AfterFunc(
+				timeout,
+				func() {
+					close(timeoutFired)
+				},
+			)
+
+			defer timer.Stop()
+
+			result, err := next(
+				toolCtx,
+				invocation,
+			)
+
+			if err == nil {
+				return result, nil
+			}
+
+			// The child context can be cancelled either by:
+			//
+			//   1. our timeout
+			//   2. parent cancellation/deadline
+			//
+			// timeoutFired distinguishes the two cases.
+			select {
+			case <-timeoutFired:
+				return nil, fmt.Errorf(
+					"%w: %w",
+					ErrToolTimeout,
+					err,
+				)
+
+			default:
+				return result, err
+			}
 		}
 	}
 }

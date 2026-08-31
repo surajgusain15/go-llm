@@ -94,9 +94,9 @@ func TestToolCircuitBreaker_OpensAfterFailureThreshold(t *testing.T) {
 		ToolInvocation{Name: "test"},
 	)
 
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, ErrToolCircuitOpen) {
 		t.Fatalf(
-			"expected ErrCircuitOpen, got %v",
+			"expected ErrToolCircuitOpen, got %v",
 			err,
 		)
 	}
@@ -147,9 +147,9 @@ func TestToolCircuitBreaker_FailsFastWhenOpen(t *testing.T) {
 		ToolInvocation{Name: "test"},
 	)
 
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, ErrToolCircuitOpen) {
 		t.Fatalf(
-			"expected ErrCircuitOpen, got %v",
+			"expected ErrToolCircuitOpen, got %v",
 			err,
 		)
 	}
@@ -206,7 +206,7 @@ func TestToolCircuitBreaker_RecoversAfterOpenTimeout(t *testing.T) {
 		ToolInvocation{Name: "test"},
 	)
 
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, ErrToolCircuitOpen) {
 		t.Fatalf(
 			"expected circuit to be open, got %v",
 			err,
@@ -284,7 +284,7 @@ func TestToolCircuitBreaker_ReopensAfterFailedProbe(t *testing.T) {
 		ToolInvocation{Name: "test"},
 	)
 
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, ErrToolCircuitOpen) {
 		t.Fatalf(
 			"expected circuit to reopen, got %v",
 			err,
@@ -375,7 +375,7 @@ func TestToolCircuitBreaker_AllowsSingleHalfOpenProbe(t *testing.T) {
 		case err := <-results:
 			if err == nil {
 				successCount++
-			} else if !errors.Is(err, ErrCircuitOpen) {
+			} else if !errors.Is(err, ErrToolCircuitOpen) {
 				t.Fatalf(
 					"unexpected error: %v",
 					err,

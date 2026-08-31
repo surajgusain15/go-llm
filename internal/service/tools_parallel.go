@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"sync"
+	"time"
 
 	"go-llm/internal/llm"
 )
@@ -29,6 +30,7 @@ func (s *ChatService) executeTools(
 
 		go func() {
 			defer wg.Done()
+			start := time.Now()
 
 			result, err := s.executeToolCall(
 				ctx,
@@ -36,9 +38,10 @@ func (s *ChatService) executeTools(
 			)
 
 			results[i] = ToolExecutionResult{
-				Call:   call,
-				Result: result,
-				Err:    err,
+				Call:     call,
+				Result:   result,
+				Err:      err,
+				Duration: time.Since(start),
 			}
 		}()
 	}

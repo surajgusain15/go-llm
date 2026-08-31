@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"go-llm/internal/events"
 	"go-llm/internal/llm"
 )
 
@@ -61,6 +62,19 @@ func ToolRetry(
 				if policy.Backoff != nil {
 
 					delay := policy.Backoff(attempt)
+
+					middlewareCtx := toolMiddlewareContext(ctx)
+
+					if middlewareCtx.Core != nil {
+						middlewareCtx.Core.Emit(
+							events.NewToolRetry(
+								invocation.Name,
+								attempt,
+								delay,
+								err,
+							),
+						)
+					}
 
 					if delay > 0 {
 
