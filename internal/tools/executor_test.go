@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"go-llm/internal/core"
+	"go-llm/internal/events"
 	"go-llm/internal/llm"
 )
 
@@ -1082,6 +1084,203 @@ func TestExecutor_RateLimit(t *testing.T) {
 	if got := executions.Load(); got != 2 {
 		t.Fatalf(
 			"expected 2 executions, got %d",
+			got,
+		)
+	}
+}
+
+type toolRecordingObserver struct {
+	mu     sync.Mutex
+	events []events.Event
+}
+
+func (o *toolRecordingObserver) OnEvent(
+	event events.Event,
+) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.events = append(
+		o.events,
+		event,
+	)
+}
+
+func (o *toolRecordingObserver) Events() []events.Event {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	result := make(
+		[]events.Event,
+		len(o.events),
+	)
+
+	copy(result, o.events)
+
+	return result
+}
+
+func TestExecutor_ObservabilityEmitsSingleToolLifecycle(
+	t *testing.T,
+) {
+	var executions atomic.Int32
+
+	observer := &toolRecordingObserver{}
+	rt := core.New(observer)
+
+	registry := NewRegistry()
+
+	registry.Register(
+		&countingTestTool{
+			count: &executions,
+		},
+	)
+
+	executor := NewExecutor(
+		registry,
+		rt,
+
+		WithToolObservability(),
+	)
+
+	_, err := executor.Execute(
+		context.Background(),
+		"rate_limit_test",
+		json.RawMessage(`{}`),
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"expected nil error, got %v",
+			err,
+		)
+	}
+
+	if got := executions.Load(); got != 1 {
+		t.Fatalf(
+			"expected 1 tool execution, got %d",
+			got,
+		)
+	}
+
+	recorded := observer.Events()
+
+	var started int
+	var finished int
+
+	for _, event := range recorded {
+		switch event.Type() {
+		case events.EventToolStarted:
+			started++
+
+		case events.EventToolFinished:
+			finished++
+		}
+	}
+
+	if started != 1 {
+		t.Fatalf(
+			"expected 1 tool.started event, got %d",
+			started,
+		)
+	}
+
+	if finished != 1 {
+		t.Fatalf(
+			"expected 1 tool.finished event, got %d",
+			finished,
+		)
+	}
+}
+
+type middlewareOrderTestTool struct {
+	record func(string)
+}
+
+func (t *middlewareOrderTestTool) Schema() llm.ToolDefinition {
+	return llm.ToolDefinition{
+		Type: "function",
+		Function: llm.ToolFunction{
+			Name:        "middleware_order",
+			Description: "middleware ordering test tool",
+			Parameters: llm.ToolParameters{
+				Type:       "object",
+				Properties: map[string]llm.ToolProperty{},
+			},
+		},
+	}
+}
+
+func (t *middlewareOrderTestTool) Execute(
+	ctx context.Context,
+	input json.RawMessage,
+) (*llm.ToolResult, error) {
+
+	t.record("tool")
+
+	return &llm.ToolResult{}, nil
+}
+
+func TestExecutor_MiddlewareOrder(
+	t *testing.T,
+) {
+	var order []string
+	var mu sync.Mutex
+
+	record := func(name string) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		order = append(order, name)
+	}
+
+	tool := &middlewareOrderTestTool{
+		record: record,
+	}
+
+	registry := NewRegistry()
+	registry.Register(tool)
+
+	executor := NewExecutor(
+		registry,
+		nil,
+
+		WithToolObservability(),
+
+		WithToolRetry(
+			ToolRetryPolicy{
+				MaxAttempts: 1,
+			},
+		),
+
+		WithMaxToolConcurrency(1),
+
+		WithDefaultToolTimeout(
+			time.Second,
+		),
+	)
+
+	_, err := executor.Execute(
+		context.Background(),
+		"middleware_order",
+		json.RawMessage(`{}`),
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"expected nil error, got %v",
+			err,
+		)
+	}
+
+	// The tool itself is the innermost execution point.
+	mu.Lock()
+	got := append([]string(nil), order...)
+	mu.Unlock()
+
+	if len(got) != 1 || got[0] != "tool" {
+		t.Fatalf(
+			"unexpected execution order: %v",
 			got,
 		)
 	}

@@ -137,26 +137,9 @@ func (e *Executor) Execute(
 	input json.RawMessage,
 ) (*llm.ToolResult, error) {
 
-	start := time.Now()
-
-	e.core.Emit(
-		events.NewToolStarted(name),
-	)
-
 	tool, ok := e.registry.Get(name)
 	if !ok {
-
-		err := ErrToolNotFound
-
-		e.core.Emit(
-			events.NewToolFinished(
-				name,
-				time.Since(start),
-				err,
-			),
-		)
-
-		return nil, err
+		return nil, ErrToolNotFound
 	}
 
 	handler := func(
@@ -181,23 +164,13 @@ func (e *Executor) Execute(
 		e.core,
 	)
 
-	result, err := handler(
+	return handler(
 		toolCtx,
 		ToolInvocation{
 			Name:  name,
 			Input: input,
 		},
 	)
-
-	e.core.Emit(
-		events.NewToolFinished(
-			name,
-			time.Since(start),
-			err,
-		),
-	)
-
-	return result, err
 }
 
 type ExecutorOption func(*Executor)

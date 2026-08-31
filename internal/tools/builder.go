@@ -36,7 +36,7 @@ func NewDefaultExecutor(rt *core.Core, db database.Client) *Executor {
 	executor := NewExecutor(
 		registry,
 		rt,
-
+		WithToolObservability(),
 		WithToolRetry(
 			ToolRetryPolicy{
 				MaxAttempts: 3,

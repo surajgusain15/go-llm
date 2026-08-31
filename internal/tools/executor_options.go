@@ -34,3 +34,12 @@ func WithToolBulkhead(
 		)
 	}
 }
+
+func WithToolObservability() ExecutorOption {
+	return func(e *Executor) {
+		e.middlewares = append(
+			e.middlewares,
+			ToolObservability(),
+		)
+	}
+}
