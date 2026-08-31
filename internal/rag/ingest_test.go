@@ -17,9 +17,15 @@ func TestIngestor_EmbedsAndStoresDocument(
 
 	store := NewInMemoryVectorStore()
 
+	chunker, err := NewChunker(100, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ingestor := NewIngestor(
 		embedder,
 		store,
+		chunker,
 	)
 
 	document := Document{
@@ -27,7 +33,7 @@ func TestIngestor_EmbedsAndStoresDocument(
 		Content: "provider has low latency",
 	}
 
-	err := ingestor.Ingest(
+	err = ingestor.Ingest(
 		context.Background(),
 		document,
 	)
@@ -51,7 +57,7 @@ func TestIngestor_EmbedsAndStoresDocument(
 		)
 	}
 
-	if results[0].Document.ID != "provider-1" {
+	if results[0].Document.ID != "provider-1#chunk-0" {
 		t.Fatalf(
 			"expected provider-1, got %q",
 			results[0].Document.ID,
@@ -69,12 +75,19 @@ func TestIngestor_EmbedsAndStoresDocument(
 func TestIngestor_RejectsEmptyContent(
 	t *testing.T,
 ) {
+
+	chunker, err := NewChunker(100, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ingestor := NewIngestor(
 		&testEmbedder{},
 		NewInMemoryVectorStore(),
+		chunker,
 	)
 
-	err := ingestor.Ingest(
+	err = ingestor.Ingest(
 		context.Background(),
 		Document{
 			ID: "provider-1",
@@ -103,12 +116,18 @@ func TestIngestor_PropagatesEmbeddingError(
 
 	store := NewInMemoryVectorStore()
 
+	chunker, err := NewChunker(100, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ingestor := NewIngestor(
 		embedder,
 		store,
+		chunker,
 	)
 
-	err := ingestor.Ingest(
+	err = ingestor.Ingest(
 		context.Background(),
 		Document{
 			ID:      "provider-1",
@@ -145,4 +164,71 @@ func (e *failingEmbedder) Embed(
 	text string,
 ) ([]float32, error) {
 	return nil, e.err
+}
+
+func TestIngestor_ChunksEmbedsAndStores(
+	t *testing.T,
+) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"abcdefghij": {1, 0},
+			"ijqrstuvwx": {0, 1},
+			"wx":         {1, 1},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	chunker, err := NewChunker(10, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ingestor := NewIngestor(
+		embedder,
+		store,
+		chunker,
+	)
+
+	err = ingestor.Ingest(
+		context.Background(),
+		Document{
+			ID:      "document-1",
+			Content: "abcdefghijqrstuvwx",
+		},
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"unexpected error: %v",
+			err,
+		)
+	}
+
+	results := store.Search(
+		[]float32{1, 0},
+		10,
+	)
+
+	expected := []struct {
+		id      string
+		content string
+	}{
+		{
+			id:      "document-1#chunk-0",
+			content: "abcdefghij",
+		},
+		{
+			id:      "document-1#chunk-1",
+			content: "ijqrstuvwx",
+		},
+	}
+
+	if len(results) != len(expected) {
+		t.Fatalf(
+			"expected %d chunks, got %d",
+			len(expected),
+			len(results),
+		)
+	}
 }

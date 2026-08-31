@@ -3,24 +3,30 @@ package rag
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 var (
-	ErrEmptyDocumentContent = errors.New("document content cannot be empty")
+	ErrEmptyDocumentContent = errors.New(
+		"document content cannot be empty",
+	)
 )
 
 type Ingestor struct {
 	embedder Embedder
 	store    *InMemoryVectorStore
+	chunker  *Chunker
 }
 
 func NewIngestor(
 	embedder Embedder,
 	store *InMemoryVectorStore,
+	chunker *Chunker,
 ) *Ingestor {
 	return &Ingestor{
 		embedder: embedder,
 		store:    store,
+		chunker:  chunker,
 	}
 }
 
@@ -37,15 +43,36 @@ func (i *Ingestor) Ingest(
 		return ErrEmptyDocumentContent
 	}
 
-	vector, err := i.embedder.Embed(
-		ctx,
+	chunks := i.chunker.Chunk(
 		document.Content,
 	)
-	if err != nil {
-		return err
+
+	for index, chunk := range chunks {
+
+		vector, err := i.embedder.Embed(
+			ctx,
+			chunk,
+		)
+		if err != nil {
+			return err
+		}
+
+		chunkDocument := Document{
+			ID: fmt.Sprintf(
+				"%s#chunk-%d",
+				document.ID,
+				index,
+			),
+			Content: chunk,
+			Vector:  vector,
+		}
+
+		if err := i.store.Add(
+			chunkDocument,
+		); err != nil {
+			return err
+		}
 	}
 
-	document.Vector = vector
-
-	return i.store.Add(document)
+	return nil
 }
