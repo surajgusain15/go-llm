@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"go-llm/internal/core"
+	"go-llm/internal/events"
 	"go-llm/internal/llm"
 )
 
@@ -720,6 +722,282 @@ func TestToolRetry_CancelDuringBackoff(t *testing.T) {
 		t.Fatalf(
 			"expected exactly 1 attempt, got %d",
 			gotAttempts,
+		)
+	}
+}
+
+type recordingToolRetryObserver struct {
+	mu     sync.Mutex
+	events []events.Event
+}
+
+func (o *recordingToolRetryObserver) OnEvent(event events.Event) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.events = append(o.events, event)
+}
+
+func (o *recordingToolRetryObserver) Events() []events.Event {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	result := make([]events.Event, len(o.events))
+	copy(result, o.events)
+
+	return result
+}
+
+func TestToolRetry_EmitsRetryEvent(t *testing.T) {
+	testErr := errors.New("temporary failure")
+
+	observer := &recordingToolRetryObserver{}
+	rt := core.New(observer)
+
+	attempts := 0
+
+	handler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+			attempts++
+
+			if attempts == 1 {
+				return nil, testErr
+			}
+
+			return &llm.ToolResult{}, nil
+		},
+	)
+
+	wrapped := ToolRetry(
+		ToolRetryPolicy{
+			MaxAttempts: 2,
+			ShouldRetry: func(err error) bool {
+				return errors.Is(err, testErr)
+			},
+			Backoff: func(attempt int) time.Duration {
+				return 25 * time.Millisecond
+			},
+		},
+	)(handler)
+
+	ctx := withToolMiddlewareContext(
+		context.Background(),
+		rt,
+	)
+
+	result, err := wrapped(
+		ctx,
+		ToolInvocation{
+			Name: "test",
+		},
+	)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("expected result")
+	}
+
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts)
+	}
+
+	var retries []events.ToolRetry
+
+	for _, event := range observer.Events() {
+		if retry, ok := event.(events.ToolRetry); ok {
+			retries = append(retries, retry)
+		}
+	}
+
+	if len(retries) != 1 {
+		t.Fatalf(
+			"expected 1 ToolRetry event, got %d",
+			len(retries),
+		)
+	}
+
+	retry := retries[0]
+
+	if retry.Name != "test" {
+		t.Fatalf(
+			"expected tool name %q, got %q",
+			"test",
+			retry.Name,
+		)
+	}
+
+	if retry.Attempt != 1 {
+		t.Fatalf(
+			"expected attempt 1, got %d",
+			retry.Attempt,
+		)
+	}
+
+	if retry.Delay != 25*time.Millisecond {
+		t.Fatalf(
+			"expected delay %v, got %v",
+			25*time.Millisecond,
+			retry.Delay,
+		)
+	}
+
+	if !errors.Is(retry.Err, testErr) {
+		t.Fatalf(
+			"expected error %v, got %v",
+			testErr,
+			retry.Err,
+		)
+	}
+}
+
+func TestToolRetry_DoesNotEmitRetryEventForNonRetryableError(
+	t *testing.T,
+) {
+	testErr := errors.New("permanent failure")
+
+	observer := &recordingToolRetryObserver{}
+	rt := core.New(observer)
+
+	attempts := 0
+
+	handler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+			attempts++
+
+			return nil, testErr
+		},
+	)
+
+	wrapped := ToolRetry(
+		ToolRetryPolicy{
+			MaxAttempts: 5,
+			ShouldRetry: func(err error) bool {
+				return false
+			},
+			Backoff: func(attempt int) time.Duration {
+				return 25 * time.Millisecond
+			},
+		},
+	)(handler)
+
+	ctx := withToolMiddlewareContext(
+		context.Background(),
+		rt,
+	)
+
+	_, err := wrapped(
+		ctx,
+		ToolInvocation{Name: "test"},
+	)
+
+	if !errors.Is(err, testErr) {
+		t.Fatalf(
+			"expected original error, got %v",
+			err,
+		)
+	}
+
+	if attempts != 1 {
+		t.Fatalf(
+			"expected 1 attempt, got %d",
+			attempts,
+		)
+	}
+
+	for _, event := range observer.Events() {
+		if _, ok := event.(events.ToolRetry); ok {
+			t.Fatal(
+				"unexpected ToolRetry event for non-retryable error",
+			)
+		}
+	}
+}
+
+func TestToolRetry_DoesNotEmitRetryEventAfterFinalAttempt(
+	t *testing.T,
+) {
+	testErr := errors.New("still failing")
+
+	observer := &recordingToolRetryObserver{}
+	rt := core.New(observer)
+
+	attempts := 0
+
+	handler := Handler(
+		func(
+			ctx context.Context,
+			invocation ToolInvocation,
+		) (*llm.ToolResult, error) {
+			attempts++
+
+			return nil, testErr
+		},
+	)
+
+	wrapped := ToolRetry(
+		ToolRetryPolicy{
+			MaxAttempts: 2,
+			ShouldRetry: func(err error) bool {
+				return true
+			},
+			Backoff: func(attempt int) time.Duration {
+				return 1 * time.Millisecond
+			},
+		},
+	)(handler)
+
+	ctx := withToolMiddlewareContext(
+		context.Background(),
+		rt,
+	)
+
+	_, err := wrapped(
+		ctx,
+		ToolInvocation{Name: "test"},
+	)
+
+	if !errors.Is(err, testErr) {
+		t.Fatalf(
+			"expected final tool error, got %v",
+			err,
+		)
+	}
+
+	if attempts != 2 {
+		t.Fatalf(
+			"expected 2 attempts, got %d",
+			attempts,
+		)
+	}
+
+	var retries []events.ToolRetry
+
+	for _, event := range observer.Events() {
+		if retry, ok := event.(events.ToolRetry); ok {
+			retries = append(retries, retry)
+		}
+	}
+
+	if len(retries) != 1 {
+		t.Fatalf(
+			"expected exactly 1 ToolRetry event, got %d",
+			len(retries),
+		)
+	}
+
+	if retries[0].Attempt != 1 {
+		t.Fatalf(
+			"expected retry event for attempt 1, got %d",
+			retries[0].Attempt,
 		)
 	}
 }
