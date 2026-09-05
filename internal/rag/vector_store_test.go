@@ -216,3 +216,117 @@ func TestInMemoryVectorStore_SkipsIncompatibleVectors(
 		)
 	}
 }
+
+func TestInMemoryVectorStore_SearchWithThreshold(
+	t *testing.T,
+) {
+	store := NewInMemoryVectorStore()
+
+	documents := []Document{
+		{
+			ID:      "strong",
+			Content: "Database timeout is five seconds.",
+			Vector:  []float32{1, 0},
+		},
+		{
+			ID:      "weak",
+			Content: "Something vaguely related.",
+			Vector:  []float32{0.6, 0.8},
+		},
+		{
+			ID:      "unrelated",
+			Content: "UUID generation.",
+			Vector:  []float32{0, 1},
+		},
+	}
+
+	for _, document := range documents {
+		if err := store.Add(document); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	results := store.SearchWithThreshold(
+		[]float32{1, 0},
+		3,
+		0.8,
+	)
+
+	if len(results) != 1 {
+		t.Fatalf(
+			"expected 1 result, got %d",
+			len(results),
+		)
+	}
+
+	if results[0].Document.ID != "strong" {
+		t.Fatalf(
+			"expected strong document, got %q",
+			results[0].Document.ID,
+		)
+	}
+
+	if results[0].Similarity < 0.8 {
+		t.Fatalf(
+			"expected similarity >= 0.8, got %.4f",
+			results[0].Similarity,
+		)
+	}
+}
+
+func TestInMemoryVectorStore_SearchWithThresholdAppliesTopK(
+	t *testing.T,
+) {
+	store := NewInMemoryVectorStore()
+
+	documents := []Document{
+		{
+			ID:      "first",
+			Content: "First document.",
+			Vector:  []float32{1, 0},
+		},
+		{
+			ID:      "second",
+			Content: "Second document.",
+			Vector:  []float32{0.99, 0.1},
+		},
+		{
+			ID:      "third",
+			Content: "Third document.",
+			Vector:  []float32{0.98, 0.2},
+		},
+	}
+
+	for _, document := range documents {
+		if err := store.Add(document); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	results := store.SearchWithThreshold(
+		[]float32{1, 0},
+		2,
+		0.5,
+	)
+
+	if len(results) != 2 {
+		t.Fatalf(
+			"expected 2 results, got %d",
+			len(results),
+		)
+	}
+
+	if results[0].Document.ID != "first" {
+		t.Fatalf(
+			"expected first document first, got %q",
+			results[0].Document.ID,
+		)
+	}
+
+	if results[1].Document.ID != "second" {
+		t.Fatalf(
+			"expected second document second, got %q",
+			results[1].Document.ID,
+		)
+	}
+}

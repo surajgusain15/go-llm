@@ -37,10 +37,7 @@ func NewInMemoryVectorStore() *InMemoryVectorStore {
 	}
 }
 
-func (s *InMemoryVectorStore) Add(
-	document Document,
-) error {
-
+func (s *InMemoryVectorStore) Add(document Document) error {
 	if document.ID == "" {
 		return ErrEmptyDocumentID
 	}
@@ -49,8 +46,6 @@ func (s *InMemoryVectorStore) Add(
 		return ErrEmptyVector
 	}
 
-	// Copy the vector so callers cannot mutate
-	// the stored representation accidentally.
 	document.Vector = append(
 		[]float32(nil),
 		document.Vector...,
@@ -68,7 +63,18 @@ func (s *InMemoryVectorStore) Search(
 	query []float32,
 	topK int,
 ) []SearchResult {
+	return s.SearchWithThreshold(
+		query,
+		topK,
+		-1,
+	)
+}
 
+func (s *InMemoryVectorStore) SearchWithThreshold(
+	query []float32,
+	topK int,
+	minSimilarity float32,
+) []SearchResult {
 	if len(query) == 0 || topK <= 0 {
 		return nil
 	}
@@ -80,15 +86,15 @@ func (s *InMemoryVectorStore) Search(
 	)
 
 	for _, document := range s.documents {
-
 		similarity, err := CosineSimilarity(
 			query,
 			document.Vector,
 		)
-
 		if err != nil {
-			// A vector with incompatible dimensions
-			// cannot participate in this search.
+			continue
+		}
+
+		if similarity < minSimilarity {
 			continue
 		}
 
