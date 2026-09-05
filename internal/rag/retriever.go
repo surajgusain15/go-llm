@@ -1,6 +1,19 @@
 package rag
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var (
+	ErrEmptyQuery = errors.New(
+		"query cannot be empty",
+	)
+
+	ErrInvalidTopK = errors.New(
+		"topK must be greater than zero",
+	)
+)
 
 type Retriever struct {
 	embedder Embedder
@@ -17,14 +30,18 @@ func NewRetriever(
 	}
 }
 
-func (r *Retriever) Search(
+func (r *Retriever) Retrieve(
 	ctx context.Context,
 	query string,
 	topK int,
 ) ([]SearchResult, error) {
 
-	if query == "" || topK <= 0 {
-		return nil, nil
+	if query == "" {
+		return nil, ErrEmptyQuery
+	}
+
+	if topK <= 0 {
+		return nil, ErrInvalidTopK
 	}
 
 	vector, err := r.embedder.Embed(

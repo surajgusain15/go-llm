@@ -46,7 +46,7 @@ func TestRetriever_EmbedsQueryAndReturnsTopK(
 		store,
 	)
 
-	results, err := retriever.Search(
+	results, err := retriever.Retrieve(
 		context.Background(),
 		"database timeout",
 		2,
@@ -81,7 +81,7 @@ func TestRetriever_EmbedsQueryAndReturnsTopK(
 	}
 }
 
-func TestRetriever_ReturnsNilForEmptyQuery(
+func TestRetriever_ReturnsErrorForEmptyQuery(
 	t *testing.T,
 ) {
 	retriever := NewRetriever(
@@ -89,15 +89,15 @@ func TestRetriever_ReturnsNilForEmptyQuery(
 		NewInMemoryVectorStore(),
 	)
 
-	results, err := retriever.Search(
+	results, err := retriever.Retrieve(
 		context.Background(),
 		"",
 		5,
 	)
 
-	if err != nil {
+	if !errors.Is(err, ErrEmptyQuery) {
 		t.Fatalf(
-			"unexpected error: %v",
+			"expected ErrEmptyQuery, got %v",
 			err,
 		)
 	}
@@ -110,7 +110,7 @@ func TestRetriever_ReturnsNilForEmptyQuery(
 	}
 }
 
-func TestRetriever_ReturnsNilForInvalidTopK(
+func TestRetriever_ReturnsErrorForInvalidTopK(
 	t *testing.T,
 ) {
 	retriever := NewRetriever(
@@ -118,15 +118,15 @@ func TestRetriever_ReturnsNilForInvalidTopK(
 		NewInMemoryVectorStore(),
 	)
 
-	results, err := retriever.Search(
+	results, err := retriever.Retrieve(
 		context.Background(),
 		"query",
 		0,
 	)
 
-	if err != nil {
+	if !errors.Is(err, ErrInvalidTopK) {
 		t.Fatalf(
-			"unexpected error: %v",
+			"expected ErrInvalidTopK, got %v",
 			err,
 		)
 	}
@@ -153,7 +153,7 @@ func TestRetriever_PropagatesEmbeddingError(
 		NewInMemoryVectorStore(),
 	)
 
-	results, err := retriever.Search(
+	results, err := retriever.Retrieve(
 		context.Background(),
 		"database timeout",
 		5,
