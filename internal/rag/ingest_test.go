@@ -232,3 +232,74 @@ func TestIngestor_ChunksEmbedsAndStores(
 		)
 	}
 }
+
+func TestIngestor_StoresChunkMetadata(
+	t *testing.T,
+) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"abcdefghij": {1, 0},
+			"ijqrstuvwx": {0, 1},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	chunker, err := NewChunker(10, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ingestor := NewIngestor(
+		embedder,
+		store,
+		chunker,
+	)
+
+	err = ingestor.Ingest(
+		context.Background(),
+		Document{
+			ID:      "document-1",
+			Content: "abcdefghijqrstuvwx",
+		},
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"unexpected error: %v",
+			err,
+		)
+	}
+
+	results := store.Search(
+		[]float32{1, 0},
+		10,
+	)
+
+	if len(results) != 2 {
+		t.Fatalf(
+			"expected 2 chunks, got %d",
+			len(results),
+		)
+	}
+
+	for _, result := range results {
+		metadata := result.Document.Metadata
+
+		if metadata.SourceDocumentID != "document-1" {
+			t.Fatalf(
+				"expected source document ID %q, got %q",
+				"document-1",
+				metadata.SourceDocumentID,
+			)
+		}
+
+		if metadata.ChunkIndex < 0 ||
+			metadata.ChunkIndex > 1 {
+			t.Fatalf(
+				"unexpected chunk index: %d",
+				metadata.ChunkIndex,
+			)
+		}
+	}
+}

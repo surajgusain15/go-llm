@@ -11,9 +11,15 @@ var (
 )
 
 type Document struct {
-	ID      string
-	Content string
-	Vector  []float32
+	ID       string
+	Content  string
+	Vector   []float32
+	Metadata DocumentMetadata
+}
+
+type DocumentMetadata struct {
+	SourceDocumentID string
+	ChunkIndex       int
 }
 
 type SearchResult struct {

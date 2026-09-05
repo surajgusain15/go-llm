@@ -65,6 +65,10 @@ func (i *Ingestor) Ingest(
 			),
 			Content: chunk,
 			Vector:  vector,
+			Metadata: DocumentMetadata{
+				SourceDocumentID: document.ID,
+				ChunkIndex:       index,
+			},
 		}
 
 		if err := i.store.Add(
