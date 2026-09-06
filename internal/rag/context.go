@@ -1,6 +1,9 @@
 package rag
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type Context struct {
 	Chunks []SearchResult
@@ -24,7 +27,12 @@ func (c Context) Text() string {
 			builder.WriteString("\n\n")
 		}
 
-		builder.WriteString(result.Document.Content)
+		fmt.Fprintf(
+			&builder,
+			"Source: %s\n%s",
+			result.Document.ID,
+			result.Document.Content,
+		)
 	}
 
 	return builder.String()
