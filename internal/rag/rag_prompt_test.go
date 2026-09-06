@@ -100,3 +100,27 @@ func TestRAGPrompt_ContainsNoOutsideKnowledgeInstruction(t *testing.T) {
 		)
 	}
 }
+
+func TestRAGPrompt_StringMatchesText(t *testing.T) {
+	prompt := NewRAGPrompt(
+		"database",
+		NewContext(
+			[]SearchResult{
+				{
+					Document: Document{
+						ID:      "doc-1",
+						Content: "Database connections should be closed.",
+					},
+				},
+			},
+		),
+	)
+
+	if prompt.String() != prompt.Text() {
+		t.Fatalf(
+			"expected String() to match Text(), got %q and %q",
+			prompt.String(),
+			prompt.Text(),
+		)
+	}
+}

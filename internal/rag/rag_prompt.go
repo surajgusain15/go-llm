@@ -29,3 +29,7 @@ Question:
 		p.Query,
 	)
 }
+
+func (p RAGPrompt) String() string {
+	return p.Text()
+}
