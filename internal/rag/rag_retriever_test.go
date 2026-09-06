@@ -59,16 +59,12 @@ func TestRAGRetriever_AppliesContextBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(got.Chunks) != 2 {
-		t.Fatalf("expected 2 chunks, got %d", len(got.Chunks))
+	if !got.HasMatch {
+		t.Fatal("expected retrieval match")
 	}
 
-	if got.Chunks[0].Document.ID != "doc-1" {
-		t.Fatalf("expected doc-1, got %s", got.Chunks[0].Document.ID)
-	}
-
-	if got.Chunks[1].Document.ID != "doc-2" {
-		t.Fatalf("expected doc-2, got %s", got.Chunks[1].Document.ID)
+	if len(got.Context.Chunks) != 2 {
+		t.Fatalf("expected 2 chunks, got %d", len(got.Context.Chunks))
 	}
 }
 
@@ -139,17 +135,26 @@ func TestRAGRetriever_ReturnsEmptyContextWhenNothingRetrieved(t *testing.T) {
 			TopK: 3,
 		},
 	)
-
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(got.Chunks) != 0 {
-		t.Fatalf("expected empty context, got %d chunks", len(got.Chunks))
+	if got.HasMatch {
+		t.Fatal("expected no retrieval match")
 	}
 
-	if got.Text() != "" {
-		t.Fatalf("expected empty context text, got %q", got.Text())
+	if len(got.Context.Chunks) != 0 {
+		t.Fatalf(
+			"expected empty context, got %d chunks",
+			len(got.Context.Chunks),
+		)
+	}
+
+	if got.Context.Text() != "" {
+		t.Fatalf(
+			"expected empty context text, got %q",
+			got.Context.Text(),
+		)
 	}
 }
 
@@ -188,15 +193,66 @@ func TestRAGRetriever_HonorsTopK(t *testing.T) {
 		context.Background(),
 		"database",
 		RetrievalOptions{
-			TopK: 2,
+			TopK: 3,
 		},
 	)
-
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(got.Chunks) != 2 {
-		t.Fatalf("expected 2 chunks, got %d", len(got.Chunks))
+	if !got.HasMatch {
+		t.Fatal("expected retrieval match")
+	}
+
+	if len(got.Context.Chunks) != 3 {
+		t.Fatalf("expected 3 chunks, got %d", len(got.Context.Chunks))
+	}
+}
+
+func TestRAGRetriever_ReturnsNoMatchWhenNothingRetrieved(t *testing.T) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"database": {1, 0},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	retriever := NewRetriever(embedder, store)
+
+	budget := NewContextBudget(
+		ApproximateTokenCounter{},
+		100,
+	)
+
+	ragRetriever := NewRAGRetriever(retriever, budget)
+
+	got, err := ragRetriever.Retrieve(
+		context.Background(),
+		"database",
+		RetrievalOptions{
+			TopK: 3,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.HasMatch {
+		t.Fatal("expected no retrieval match")
+	}
+
+	if len(got.Context.Chunks) != 0 {
+		t.Fatalf(
+			"expected empty context, got %d chunks",
+			len(got.Context.Chunks),
+		)
+	}
+
+	if got.Context.Text() != "" {
+		t.Fatalf(
+			"expected empty context text, got %q",
+			got.Context.Text(),
+		)
 	}
 }

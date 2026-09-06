@@ -17,17 +17,40 @@ func NewRAGRetriever(
 	}
 }
 
+// func (r *RAGRetriever) Retrieve(
+// 	ctx context.Context,
+// 	query string,
+// 	options RetrievalOptions,
+// ) (Context, error) {
+// 	results, err := r.retriever.Retrieve(ctx, query, options)
+// 	if err != nil {
+// 		return Context{}, err
+// 	}
+//
+// 	selected := r.contextBudget.Select(results)
+//
+// 	return NewContext(selected), nil
+// }
+
+type RetrievalContext struct {
+	Context  Context
+	HasMatch bool
+}
+
 func (r *RAGRetriever) Retrieve(
 	ctx context.Context,
 	query string,
 	options RetrievalOptions,
-) (Context, error) {
+) (RetrievalContext, error) {
 	results, err := r.retriever.Retrieve(ctx, query, options)
 	if err != nil {
-		return Context{}, err
+		return RetrievalContext{}, err
 	}
 
 	selected := r.contextBudget.Select(results)
 
-	return NewContext(selected), nil
+	return RetrievalContext{
+		Context:  NewContext(selected),
+		HasMatch: len(selected) > 0,
+	}, nil
 }
