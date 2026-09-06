@@ -47,6 +47,10 @@ func (p *RAGPipeline) Generate(
 		return RAGResult{}, err
 	}
 
+	if result.SelectedCount == 0 {
+		return result, ErrNoContext
+	}
+
 	answer, err := generator.Generate(ctx, result.Prompt)
 	if err != nil {
 		return RAGResult{}, err

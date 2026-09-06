@@ -208,7 +208,7 @@ func TestRAGPipeline_GenerateCallsGenerator(t *testing.T) {
 	err := store.Add(
 		Document{
 			ID:      "doc-1",
-			Content: "Database connections should be closed.",
+			Content: "12345678",
 			Vector:  []float32{1, 0},
 		},
 	)
@@ -225,13 +225,13 @@ func TestRAGPipeline_GenerateCallsGenerator(t *testing.T) {
 		answer: "Connections should be closed after use.",
 	}
 
-	_, err = pipeline.Generate(
+	_, err1 := pipeline.Generate(
 		context.Background(),
-		"How should database connections be handled?",
+		"database",
 		RetrievalOptions{TopK: 1},
 		generator,
 	)
-	if err != nil {
+	if err1 != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -239,9 +239,10 @@ func TestRAGPipeline_GenerateCallsGenerator(t *testing.T) {
 		t.Fatal("expected generator to be called")
 	}
 
-	if generator.capturedPrompt.Query != "How should database connections be handled?" {
+	if generator.capturedPrompt.Query != "database" {
 		t.Fatalf(
-			"expected generator to receive query, got %q",
+			"expected generator to receive query %q, got %q",
+			"database",
 			generator.capturedPrompt.Query,
 		)
 	}
@@ -435,6 +436,239 @@ func TestRAGPipeline_GenerateDoesNotCallGeneratorWhenRetrievalFails(t *testing.T
 			"expected error %v, got %v",
 			expectedErr,
 			err,
+		)
+	}
+
+	if generator.called {
+		t.Fatal("expected generator not to be called")
+	}
+}
+
+func TestRAGPipeline_GenerateReturnsErrNoContext(t *testing.T) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"database": {1, 0},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	retriever := NewRetriever(embedder, store)
+	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
+	ragRetriever := NewRAGRetriever(retriever, budget)
+	pipeline := NewRAGPipeline(ragRetriever)
+
+	generator := &testGenerator{
+		answer: "should not be generated",
+	}
+
+	result, err := pipeline.Generate(
+		context.Background(),
+		"database",
+		RetrievalOptions{TopK: 3},
+		generator,
+	)
+
+	if !errors.Is(err, ErrNoContext) {
+		t.Fatalf("expected ErrNoContext, got %v", err)
+	}
+
+	if result.RetrievedCount != 0 {
+		t.Fatalf(
+			"expected 0 retrieved results, got %d",
+			result.RetrievedCount,
+		)
+	}
+
+	if result.SelectedCount != 0 {
+		t.Fatalf(
+			"expected 0 selected results, got %d",
+			result.SelectedCount,
+		)
+	}
+
+	if generator.called {
+		t.Fatal("expected generator not to be called")
+	}
+}
+
+func TestRAGPipeline_GenerateReturnsErrNoContextWhenBudgetSelectsNothing(t *testing.T) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"database": {1, 0},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	err := store.Add(
+		Document{
+			ID:      "doc-1",
+			Content: "12345678901234567890",
+			Vector:  []float32{1, 0},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error adding document: %v", err)
+	}
+
+	retriever := NewRetriever(embedder, store)
+
+	// 20 characters = 5 approximate tokens.
+	// Budget of 4 means the retrieved document cannot be selected.
+	budget := NewContextBudget(ApproximateTokenCounter{}, 4)
+	ragRetriever := NewRAGRetriever(retriever, budget)
+	pipeline := NewRAGPipeline(ragRetriever)
+
+	generator := &testGenerator{
+		answer: "should not be generated",
+	}
+
+	result, err := pipeline.Generate(
+		context.Background(),
+		"database",
+		RetrievalOptions{TopK: 1},
+		generator,
+	)
+
+	if !errors.Is(err, ErrNoContext) {
+		t.Fatalf("expected ErrNoContext, got %v", err)
+	}
+
+	if result.RetrievedCount != 1 {
+		t.Fatalf(
+			"expected 1 retrieved result, got %d",
+			result.RetrievedCount,
+		)
+	}
+
+	if result.SelectedCount != 0 {
+		t.Fatalf(
+			"expected 0 selected results, got %d",
+			result.SelectedCount,
+		)
+	}
+
+	if generator.called {
+		t.Fatal("expected generator not to be called")
+	}
+}
+
+func TestRAGPipeline_GenerateUsesSimilarityThreshold(t *testing.T) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"database": {1, 0},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	err := store.Add(
+		Document{
+			ID:      "doc-1",
+			Content: "12345678",
+			Vector:  []float32{1, 0},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error adding document: %v", err)
+	}
+
+	retriever := NewRetriever(embedder, store)
+	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
+	ragRetriever := NewRAGRetriever(retriever, budget)
+	pipeline := NewRAGPipeline(ragRetriever)
+
+	generator := &testGenerator{
+		answer: "database answer",
+	}
+
+	result, err := pipeline.Generate(
+		context.Background(),
+		"database",
+		RetrievalOptions{
+			TopK:          3,
+			MinSimilarity: 0.8,
+		},
+		generator,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.RetrievedCount != 1 {
+		t.Fatalf(
+			"expected 1 retrieved result, got %d",
+			result.RetrievedCount,
+		)
+	}
+
+	if result.SelectedCount != 1 {
+		t.Fatalf(
+			"expected 1 selected result, got %d",
+			result.SelectedCount,
+		)
+	}
+
+	if !generator.called {
+		t.Fatal("expected generator to be called")
+	}
+}
+
+func TestRAGPipeline_GenerateReturnsErrNoContextBelowSimilarityThreshold(t *testing.T) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"database": {1, 0},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	err := store.Add(
+		Document{
+			ID:      "doc-1",
+			Content: "12345678",
+			Vector:  []float32{0, 1},
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error adding document: %v", err)
+	}
+
+	retriever := NewRetriever(embedder, store)
+	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
+	ragRetriever := NewRAGRetriever(retriever, budget)
+	pipeline := NewRAGPipeline(ragRetriever)
+
+	generator := &testGenerator{
+		answer: "should not be generated",
+	}
+
+	result, err := pipeline.Generate(
+		context.Background(),
+		"database",
+		RetrievalOptions{
+			TopK:          3,
+			MinSimilarity: 0.8,
+		},
+		generator,
+	)
+
+	if !errors.Is(err, ErrNoContext) {
+		t.Fatalf("expected ErrNoContext, got %v", err)
+	}
+
+	if result.RetrievedCount != 0 {
+		t.Fatalf(
+			"expected 0 retrieved results, got %d",
+			result.RetrievedCount,
+		)
+	}
+
+	if result.SelectedCount != 0 {
+		t.Fatalf(
+			"expected 0 selected results, got %d",
+			result.SelectedCount,
 		)
 	}
 
