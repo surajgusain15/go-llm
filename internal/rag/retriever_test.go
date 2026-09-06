@@ -249,3 +249,48 @@ func TestRetriever_AppliesSimilarityThreshold(
 		)
 	}
 }
+
+func TestRetrievalOptions_RejectsSimilarityBelowMinimum(t *testing.T) {
+	options := RetrievalOptions{
+		TopK:          3,
+		MinSimilarity: -1.1,
+	}
+
+	err := options.Validate()
+
+	if !errors.Is(err, ErrInvalidSimilarity) {
+		t.Fatalf("expected ErrInvalidSimilarity, got %v", err)
+	}
+}
+
+func TestRetrievalOptions_RejectsSimilarityAboveMaximum(t *testing.T) {
+	options := RetrievalOptions{
+		TopK:          3,
+		MinSimilarity: 1.1,
+	}
+
+	err := options.Validate()
+
+	if !errors.Is(err, ErrInvalidSimilarity) {
+		t.Fatalf("expected ErrInvalidSimilarity, got %v", err)
+	}
+}
+
+func TestRetrievalOptions_AllowsSimilarityBounds(t *testing.T) {
+	tests := []float32{-1, 0, 1}
+
+	for _, similarity := range tests {
+		options := RetrievalOptions{
+			TopK:          3,
+			MinSimilarity: similarity,
+		}
+
+		if err := options.Validate(); err != nil {
+			t.Fatalf(
+				"expected similarity %v to be valid, got %v",
+				similarity,
+				err,
+			)
+		}
+	}
+}

@@ -43,6 +43,10 @@ func (r *Retriever) Retrieve(
 		return nil, ErrInvalidTopK
 	}
 
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+
 	vector, err := r.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, err
@@ -53,4 +57,16 @@ func (r *Retriever) Retrieve(
 		options.TopK,
 		options.MinSimilarity,
 	), nil
+}
+
+func (o RetrievalOptions) Validate() error {
+	if o.TopK <= 0 {
+		return ErrInvalidTopK
+	}
+
+	if o.MinSimilarity < -1 || o.MinSimilarity > 1 {
+		return ErrInvalidSimilarity
+	}
+
+	return nil
 }
