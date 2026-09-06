@@ -181,3 +181,9 @@ func (ApproximateTokenCounter) Count(text string) int {
 	// Roughly 1 token per 4 ASCII characters.
 	return (len(text) + 3) / 4
 }
+
+type RuneTokenCounter struct{}
+
+func (RuneTokenCounter) Count(text string) int {
+	return len([]rune(text))
+}

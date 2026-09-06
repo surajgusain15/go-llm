@@ -230,3 +230,46 @@ func TestBoundaryChunker_SupportsUnicode(
 		}
 	}
 }
+
+func TestRuneTokenCounter_CountsRunes(t *testing.T) {
+	counter := RuneTokenCounter{}
+
+	tests := []struct {
+		name string
+		text string
+		want int
+	}{
+		{
+			name: "ascii",
+			text: "hello",
+			want: 5,
+		},
+		{
+			name: "unicode",
+			text: "你好",
+			want: 2,
+		},
+		{
+			name: "mixed",
+			text: "hello世界",
+			want: 7,
+		},
+		{
+			name: "empty",
+			text: "",
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(
+			tt.name, func(t *testing.T) {
+				got := counter.Count(tt.text)
+
+				if got != tt.want {
+					t.Fatalf("expected %d, got %d", tt.want, got)
+				}
+			},
+		)
+	}
+}
