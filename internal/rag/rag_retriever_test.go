@@ -59,8 +59,12 @@ func TestRAGRetriever_AppliesContextBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !got.HasMatch {
-		t.Fatal("expected retrieval match")
+	if got.RetrievedCount != 3 {
+		t.Fatalf("expected 3 retrieved results, got %d", got.RetrievedCount)
+	}
+
+	if got.SelectedCount != 2 {
+		t.Fatalf("expected 2 selected results, got %d", got.SelectedCount)
 	}
 
 	if len(got.Context.Chunks) != 2 {
@@ -139,10 +143,19 @@ func TestRAGRetriever_ReturnsEmptyContextWhenNothingRetrieved(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.HasMatch {
-		t.Fatal("expected no retrieval match")
+	if got.RetrievedCount != 0 {
+		t.Fatalf(
+			"expected 0 retrieved results, got %d",
+			got.RetrievedCount,
+		)
 	}
 
+	if got.SelectedCount != 0 {
+		t.Fatalf(
+			"expected 0 selected results, got %d",
+			got.SelectedCount,
+		)
+	}
 	if len(got.Context.Chunks) != 0 {
 		t.Fatalf(
 			"expected empty context, got %d chunks",
@@ -154,6 +167,69 @@ func TestRAGRetriever_ReturnsEmptyContextWhenNothingRetrieved(t *testing.T) {
 		t.Fatalf(
 			"expected empty context text, got %q",
 			got.Context.Text(),
+		)
+	}
+}
+
+func TestRAGRetriever_DistinguishesRetrievedFromSelected(t *testing.T) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"database": {1, 0},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	err := store.Add(
+		Document{
+			ID:      "doc-1",
+			Content: "12345678901234567890", // 5 approximate tokens
+			Vector:  []float32{1, 0},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	retriever := NewRetriever(embedder, store)
+
+	// Budget is smaller than the first result.
+	budget := NewContextBudget(
+		ApproximateTokenCounter{},
+		4,
+	)
+
+	ragRetriever := NewRAGRetriever(retriever, budget)
+
+	got, err := ragRetriever.Retrieve(
+		context.Background(),
+		"database",
+		RetrievalOptions{
+			TopK: 1,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.RetrievedCount != 1 {
+		t.Fatalf(
+			"expected 1 retrieved result, got %d",
+			got.RetrievedCount,
+		)
+	}
+
+	if got.SelectedCount != 0 {
+		t.Fatalf(
+			"expected 0 selected results, got %d",
+			got.SelectedCount,
+		)
+	}
+
+	if len(got.Context.Chunks) != 0 {
+		t.Fatalf(
+			"expected empty context, got %d chunks",
+			len(got.Context.Chunks),
 		)
 	}
 }
@@ -199,9 +275,18 @@ func TestRAGRetriever_HonorsTopK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got.RetrievedCount != 3 {
+		t.Fatalf(
+			"expected 3 retrieved results, got %d",
+			got.RetrievedCount,
+		)
+	}
 
-	if !got.HasMatch {
-		t.Fatal("expected retrieval match")
+	if got.SelectedCount != 3 {
+		t.Fatalf(
+			"expected 3 selected results, got %d",
+			got.SelectedCount,
+		)
 	}
 
 	if len(got.Context.Chunks) != 3 {
@@ -238,8 +323,18 @@ func TestRAGRetriever_ReturnsNoMatchWhenNothingRetrieved(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.HasMatch {
-		t.Fatal("expected no retrieval match")
+	if got.RetrievedCount != 0 {
+		t.Fatalf(
+			"expected 0 retrieved results, got %d",
+			got.RetrievedCount,
+		)
+	}
+
+	if got.SelectedCount != 0 {
+		t.Fatalf(
+			"expected 0 selected results, got %d",
+			got.SelectedCount,
+		)
 	}
 
 	if len(got.Context.Chunks) != 0 {

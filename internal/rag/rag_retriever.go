@@ -33,8 +33,9 @@ func NewRAGRetriever(
 // }
 
 type RetrievalContext struct {
-	Context  Context
-	HasMatch bool
+	Context        Context
+	RetrievedCount int
+	SelectedCount  int
 }
 
 func (r *RAGRetriever) Retrieve(
@@ -50,7 +51,8 @@ func (r *RAGRetriever) Retrieve(
 	selected := r.contextBudget.Select(results)
 
 	return RetrievalContext{
-		Context:  NewContext(selected),
-		HasMatch: len(selected) > 0,
+		Context:        NewContext(selected),
+		RetrievedCount: len(results),
+		SelectedCount:  len(selected),
 	}, nil
 }
