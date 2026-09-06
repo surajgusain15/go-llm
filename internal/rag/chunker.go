@@ -165,3 +165,19 @@ func (c *BoundaryChunker) findBoundary(runes []rune) int {
 
 	return 0
 }
+
+type TokenCounter interface {
+	Count(text string) int
+}
+
+type ApproximateTokenCounter struct{}
+
+func (ApproximateTokenCounter) Count(text string) int {
+	if text == "" {
+		return 0
+	}
+
+	// Temporary approximation.
+	// Roughly 1 token per 4 ASCII characters.
+	return (len(text) + 3) / 4
+}
