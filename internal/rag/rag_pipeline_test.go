@@ -30,7 +30,7 @@ func TestRAGPipeline_BuildPromptIncludesQuery(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
+	pipeline := NewRAGPipeline(ragRetriever, nil)
 
 	query := "How should database connections be handled?"
 
@@ -71,7 +71,7 @@ func TestRAGPipeline_BuildPromptIncludesRetrievedContext(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
+	pipeline := NewRAGPipeline(ragRetriever, nil)
 
 	result, err := pipeline.BuildPrompt(
 		context.Background(),
@@ -123,7 +123,7 @@ func TestRAGPipeline_BuildPromptPreservesRetrievalCounts(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 5)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
+	pipeline := NewRAGPipeline(ragRetriever, nil)
 
 	result, err := pipeline.BuildPrompt(
 		context.Background(),
@@ -163,7 +163,7 @@ func TestRAGPipeline_PropagatesRetrievalError(t *testing.T) {
 
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
+	pipeline := NewRAGPipeline(ragRetriever, nil)
 
 	_, err := pipeline.BuildPrompt(
 		context.Background(),
@@ -219,17 +219,16 @@ func TestRAGPipeline_GenerateCallsGenerator(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
-
 	generator := &testGenerator{
 		answer: "Connections should be closed after use.",
 	}
+
+	pipeline := NewRAGPipeline(ragRetriever, generator)
 
 	_, err1 := pipeline.Generate(
 		context.Background(),
 		"database",
 		RetrievalOptions{TopK: 1},
-		generator,
 	)
 	if err1 != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -271,17 +270,16 @@ func TestRAGPipeline_GenerateReturnsAnswer(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
-
 	generator := &testGenerator{
 		answer: "Connections should be closed after use.",
 	}
+
+	pipeline := NewRAGPipeline(ragRetriever, generator)
 
 	result, err := pipeline.Generate(
 		context.Background(),
 		"database",
 		RetrievalOptions{TopK: 1},
-		generator,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -330,17 +328,17 @@ func TestRAGPipeline_GeneratePreservesRetrievalCounts(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 5)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
 
 	generator := &testGenerator{
 		answer: "test answer",
 	}
 
+	pipeline := NewRAGPipeline(ragRetriever, generator)
+
 	result, err := pipeline.Generate(
 		context.Background(),
 		"database",
 		RetrievalOptions{TopK: 3},
-		generator,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -384,19 +382,18 @@ func TestRAGPipeline_GeneratePropagatesGeneratorError(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
 
 	expectedErr := errors.New("generation failed")
-
 	generator := &testGenerator{
 		err: expectedErr,
 	}
+
+	pipeline := NewRAGPipeline(ragRetriever, generator)
 
 	_, err = pipeline.Generate(
 		context.Background(),
 		"database",
 		RetrievalOptions{TopK: 1},
-		generator,
 	)
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf(
@@ -419,17 +416,17 @@ func TestRAGPipeline_GenerateDoesNotCallGeneratorWhenRetrievalFails(t *testing.T
 
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
 
 	generator := &testGenerator{
 		answer: "should not be returned",
 	}
 
+	pipeline := NewRAGPipeline(ragRetriever, nil)
+
 	_, err := pipeline.Generate(
 		context.Background(),
 		"database",
 		RetrievalOptions{TopK: 3},
-		generator,
 	)
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf(
@@ -456,17 +453,16 @@ func TestRAGPipeline_GenerateReturnsErrNoContext(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
-
 	generator := &testGenerator{
 		answer: "should not be generated",
 	}
+
+	pipeline := NewRAGPipeline(ragRetriever, generator)
 
 	result, err := pipeline.Generate(
 		context.Background(),
 		"database",
 		RetrievalOptions{TopK: 3},
-		generator,
 	)
 
 	if !errors.Is(err, ErrNoContext) {
@@ -518,17 +514,17 @@ func TestRAGPipeline_GenerateReturnsErrNoContextWhenBudgetSelectsNothing(t *test
 	// Budget of 4 means the retrieved document cannot be selected.
 	budget := NewContextBudget(ApproximateTokenCounter{}, 4)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
 
 	generator := &testGenerator{
 		answer: "should not be generated",
 	}
 
+	pipeline := NewRAGPipeline(ragRetriever, generator)
+
 	result, err := pipeline.Generate(
 		context.Background(),
 		"database",
 		RetrievalOptions{TopK: 1},
-		generator,
 	)
 
 	if !errors.Is(err, ErrNoContext) {
@@ -577,11 +573,12 @@ func TestRAGPipeline_GenerateUsesSimilarityThreshold(t *testing.T) {
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
 
 	generator := &testGenerator{
 		answer: "database answer",
 	}
+
+	pipeline := NewRAGPipeline(ragRetriever, generator)
 
 	result, err := pipeline.Generate(
 		context.Background(),
@@ -590,7 +587,6 @@ func TestRAGPipeline_GenerateUsesSimilarityThreshold(t *testing.T) {
 			TopK:          3,
 			MinSimilarity: 0.8,
 		},
-		generator,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -638,11 +634,12 @@ func TestRAGPipeline_GenerateReturnsErrNoContextBelowSimilarityThreshold(t *test
 	retriever := NewRetriever(embedder, store)
 	budget := NewContextBudget(ApproximateTokenCounter{}, 100)
 	ragRetriever := NewRAGRetriever(retriever, budget)
-	pipeline := NewRAGPipeline(ragRetriever)
 
 	generator := &testGenerator{
 		answer: "should not be generated",
 	}
+
+	pipeline := NewRAGPipeline(ragRetriever, generator)
 
 	result, err := pipeline.Generate(
 		context.Background(),
@@ -651,7 +648,6 @@ func TestRAGPipeline_GenerateReturnsErrNoContextBelowSimilarityThreshold(t *test
 			TopK:          3,
 			MinSimilarity: 0.8,
 		},
-		generator,
 	)
 
 	if !errors.Is(err, ErrNoContext) {

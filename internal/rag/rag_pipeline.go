@@ -4,11 +4,16 @@ import "context"
 
 type RAGPipeline struct {
 	retriever *RAGRetriever
+	generator Generator
 }
 
-func NewRAGPipeline(retriever *RAGRetriever) *RAGPipeline {
+func NewRAGPipeline(
+	retriever *RAGRetriever,
+	generator Generator,
+) *RAGPipeline {
 	return &RAGPipeline{
 		retriever: retriever,
+		generator: generator,
 	}
 }
 
@@ -40,7 +45,6 @@ func (p *RAGPipeline) Generate(
 	ctx context.Context,
 	query string,
 	options RetrievalOptions,
-	generator Generator,
 ) (RAGResult, error) {
 	result, err := p.BuildPrompt(ctx, query, options)
 	if err != nil {
@@ -51,7 +55,7 @@ func (p *RAGPipeline) Generate(
 		return result, ErrNoContext
 	}
 
-	answer, err := generator.Generate(ctx, result.Prompt)
+	answer, err := p.generator.Generate(ctx, result.Prompt)
 	if err != nil {
 		return RAGResult{}, err
 	}
