@@ -70,7 +70,9 @@ func TestRetriever_RecallAtK(t *testing.T) {
 				results, err := retriever.Retrieve(
 					context.Background(),
 					testCase.Query,
-					topK,
+					RetrievalOptions{
+						TopK: topK,
+					},
 				)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -151,7 +153,9 @@ func TestRetriever_PrecisionAtK(t *testing.T) {
 	results, err := retriever.Retrieve(
 		context.Background(),
 		"database timeout",
-		2,
+		RetrievalOptions{
+			TopK: 2,
+		},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

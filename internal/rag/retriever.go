@@ -6,14 +6,14 @@ import (
 )
 
 var (
-	ErrEmptyQuery = errors.New(
-		"query cannot be empty",
-	)
-
-	ErrInvalidTopK = errors.New(
-		"topK must be greater than zero",
-	)
+	ErrEmptyQuery  = errors.New("query cannot be empty")
+	ErrInvalidTopK = errors.New("topK must be greater than zero")
 )
+
+type RetrievalOptions struct {
+	TopK          int
+	MinSimilarity float32
+}
 
 type Retriever struct {
 	embedder Embedder
@@ -33,27 +33,24 @@ func NewRetriever(
 func (r *Retriever) Retrieve(
 	ctx context.Context,
 	query string,
-	topK int,
+	options RetrievalOptions,
 ) ([]SearchResult, error) {
-
 	if query == "" {
 		return nil, ErrEmptyQuery
 	}
 
-	if topK <= 0 {
+	if options.TopK <= 0 {
 		return nil, ErrInvalidTopK
 	}
 
-	vector, err := r.embedder.Embed(
-		ctx,
-		query,
-	)
+	vector, err := r.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.store.Search(
+	return r.store.SearchWithThreshold(
 		vector,
-		topK,
+		options.TopK,
+		options.MinSimilarity,
 	), nil
 }

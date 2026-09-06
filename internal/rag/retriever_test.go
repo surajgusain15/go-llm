@@ -49,7 +49,9 @@ func TestRetriever_EmbedsQueryAndReturnsTopK(
 	results, err := retriever.Retrieve(
 		context.Background(),
 		"database timeout",
-		2,
+		RetrievalOptions{
+			TopK: 2,
+		},
 	)
 
 	if err != nil {
@@ -92,7 +94,9 @@ func TestRetriever_ReturnsErrorForEmptyQuery(
 	results, err := retriever.Retrieve(
 		context.Background(),
 		"",
-		5,
+		RetrievalOptions{
+			TopK: 5,
+		},
 	)
 
 	if !errors.Is(err, ErrEmptyQuery) {
@@ -121,7 +125,9 @@ func TestRetriever_ReturnsErrorForInvalidTopK(
 	results, err := retriever.Retrieve(
 		context.Background(),
 		"query",
-		0,
+		RetrievalOptions{
+			TopK: 0,
+		},
 	)
 
 	if !errors.Is(err, ErrInvalidTopK) {
@@ -156,7 +162,9 @@ func TestRetriever_PropagatesEmbeddingError(
 	results, err := retriever.Retrieve(
 		context.Background(),
 		"database timeout",
-		5,
+		RetrievalOptions{
+			TopK: 5,
+		},
 	)
 
 	if !errors.Is(err, expectedErr) {
@@ -170,6 +178,74 @@ func TestRetriever_PropagatesEmbeddingError(
 		t.Fatalf(
 			"expected nil results, got %v",
 			results,
+		)
+	}
+}
+
+func TestRetriever_AppliesSimilarityThreshold(
+	t *testing.T,
+) {
+	embedder := &testEmbedder{
+		embeddings: map[string][]float32{
+			"database timeout": {1, 0},
+		},
+	}
+
+	store := NewInMemoryVectorStore()
+
+	documents := []Document{
+		{
+			ID:      "strong",
+			Content: "Database timeout is five seconds.",
+			Vector:  []float32{1, 0},
+		},
+		{
+			ID:      "weak",
+			Content: "Something vaguely related.",
+			Vector:  []float32{0.6, 0.8},
+		},
+		{
+			ID:      "unrelated",
+			Content: "UUID generation.",
+			Vector:  []float32{0, 1},
+		},
+	}
+
+	for _, document := range documents {
+		if err := store.Add(document); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	retriever := NewRetriever(
+		embedder,
+		store,
+	)
+
+	results, err := retriever.Retrieve(
+		context.Background(),
+		"database timeout",
+		RetrievalOptions{
+			TopK:          3,
+			MinSimilarity: 0.8,
+		},
+	)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf(
+			"expected 1 result, got %d",
+			len(results),
+		)
+	}
+
+	if results[0].Document.ID != "strong" {
+		t.Fatalf(
+			"expected strong document, got %q",
+			results[0].Document.ID,
 		)
 	}
 }
