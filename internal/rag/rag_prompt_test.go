@@ -68,3 +68,35 @@ func TestRAGPrompt_HandlesEmptyContext(t *testing.T) {
 		t.Fatalf("expected prompt to contain query, got %q", text)
 	}
 }
+
+func TestRAGPrompt_ContainsInsufficientContextInstruction(t *testing.T) {
+	prompt := NewRAGPrompt("What is a database timeout?", Context{})
+
+	text := prompt.Text()
+
+	expected := "If the answer cannot be found in the context, say that the information is not available in the provided context."
+
+	if !strings.Contains(text, expected) {
+		t.Fatalf(
+			"expected insufficient-context instruction %q, got %q",
+			expected,
+			text,
+		)
+	}
+}
+
+func TestRAGPrompt_ContainsNoOutsideKnowledgeInstruction(t *testing.T) {
+	prompt := NewRAGPrompt("What is a database timeout?", Context{})
+
+	text := prompt.Text()
+
+	expected := "Do not use outside knowledge or make up information."
+
+	if !strings.Contains(text, expected) {
+		t.Fatalf(
+			"expected no-outside-knowledge instruction %q, got %q",
+			expected,
+			text,
+		)
+	}
+}
