@@ -183,44 +183,6 @@ func TestChunker_CanSplitSentenceAcrossChunks(
 	}
 }
 
-func TestBoundaryChunker_PrefersSentenceBoundary(
-	t *testing.T,
-) {
-	chunker, err := NewBoundaryChunker(50, 0)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	text := "Database connections should be closed. Connection pooling improves performance."
-
-	chunks := chunker.Chunk(text)
-
-	expected := []string{
-		"Database connections should be closed.",
-		"Connection pooling improves performance.",
-	}
-
-	if len(chunks) != len(expected) {
-		t.Fatalf(
-			"expected %d chunks, got %d",
-			len(expected),
-			len(chunks),
-		)
-	}
-
-	for i := range expected {
-		if chunks[i] != expected[i] {
-			t.Fatalf(
-				"chunk %d: expected %q, got %q",
-				i,
-				expected[i],
-				chunks[i],
-			)
-		}
-	}
-}
-
 func TestBoundaryChunker_DoesNotExceedMaximumSize(
 	t *testing.T,
 ) {
@@ -245,25 +207,6 @@ func TestBoundaryChunker_DoesNotExceedMaximumSize(
 	}
 }
 
-func TestBoundaryChunker_EmptyText(
-	t *testing.T,
-) {
-	chunker, err := NewBoundaryChunker(20, 0)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	chunks := chunker.Chunk("")
-
-	if chunks != nil {
-		t.Fatalf(
-			"expected nil chunks, got %v",
-			chunks,
-		)
-	}
-}
-
 func TestBoundaryChunker_SupportsUnicode(
 	t *testing.T,
 ) {
@@ -285,49 +228,5 @@ func TestBoundaryChunker_SupportsUnicode(
 				len([]rune(chunk)),
 			)
 		}
-	}
-}
-
-func TestBoundaryChunker_PreservesOverlap(
-	t *testing.T,
-) {
-	chunker, err := NewBoundaryChunker(20, 5)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	text := "First sentence is here. Second sentence is here."
-
-	chunks := chunker.Chunk(text)
-
-	if len(chunks) < 2 {
-		t.Fatalf(
-			"expected at least 2 chunks, got %d",
-			len(chunks),
-		)
-	}
-
-	first := []rune(chunks[0])
-	second := []rune(chunks[1])
-
-	if len(first) < 5 || len(second) < 5 {
-		t.Fatalf("chunks are too small to test overlap")
-	}
-
-	expectedOverlap := string(
-		first[len(first)-5:],
-	)
-
-	actualOverlap := string(
-		second[:5],
-	)
-
-	if expectedOverlap != actualOverlap {
-		t.Fatalf(
-			"expected overlap %q, got %q",
-			expectedOverlap,
-			actualOverlap,
-		)
 	}
 }

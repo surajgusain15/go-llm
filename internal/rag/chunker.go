@@ -2,7 +2,6 @@ package rag
 
 import (
 	"errors"
-	"slices"
 	"strings"
 )
 
@@ -127,6 +126,10 @@ func (c *BoundaryChunker) Chunk(text string) []string {
 
 		cut := c.findBoundary(window)
 
+		if cut == 0 {
+			cut = c.size
+		}
+
 		if cut == len(window) {
 			// No sentence boundary found.
 			cut = len(window)
@@ -152,15 +155,13 @@ func (c *BoundaryChunker) Chunk(text string) []string {
 	return chunks
 }
 
-func (c *BoundaryChunker) findBoundary(
-	runes []rune,
-) int {
-	for i, r := range slices.Backward(runes) {
-		switch r {
+func (c *BoundaryChunker) findBoundary(runes []rune) int {
+	for i := len(runes) - 1; i >= 0; i-- {
+		switch runes[i] {
 		case '.', '!', '?':
 			return i + 1
 		}
 	}
 
-	return len(runes)
+	return 0
 }

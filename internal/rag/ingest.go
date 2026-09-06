@@ -12,16 +12,20 @@ var (
 	)
 )
 
+type TextChunker interface {
+	Chunk(text string) []string
+}
+
 type Ingestor struct {
 	embedder Embedder
 	store    *InMemoryVectorStore
-	chunker  *Chunker
+	chunker  TextChunker
 }
 
 func NewIngestor(
 	embedder Embedder,
 	store *InMemoryVectorStore,
-	chunker *Chunker,
+	chunker TextChunker,
 ) *Ingestor {
 	return &Ingestor{
 		embedder: embedder,
