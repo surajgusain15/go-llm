@@ -14,6 +14,7 @@ func NewRAGPipeline(retriever *RAGRetriever) *RAGPipeline {
 
 type RAGResult struct {
 	Prompt         RAGPrompt
+	Answer         string
 	RetrievedCount int
 	SelectedCount  int
 }
@@ -33,4 +34,25 @@ func (p *RAGPipeline) BuildPrompt(
 		RetrievedCount: retrieval.RetrievedCount,
 		SelectedCount:  retrieval.SelectedCount,
 	}, nil
+}
+
+func (p *RAGPipeline) Generate(
+	ctx context.Context,
+	query string,
+	options RetrievalOptions,
+	generator Generator,
+) (RAGResult, error) {
+	result, err := p.BuildPrompt(ctx, query, options)
+	if err != nil {
+		return RAGResult{}, err
+	}
+
+	answer, err := generator.Generate(ctx, result.Prompt)
+	if err != nil {
+		return RAGResult{}, err
+	}
+
+	result.Answer = answer
+
+	return result, nil
 }
